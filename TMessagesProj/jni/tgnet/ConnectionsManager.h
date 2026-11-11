@@ -65,9 +65,12 @@ public:
     void switchBackend(bool restart);
     void setCustomServer(std::string address, uint32_t port);
     void clearCustomServer();
-    void setTransport(int32_t transport);
+    void setTransport(int32_t transport, bool obfuscated);
     int32_t getTransport() const {
         return transportType.load();
+    }
+    bool isTransportObfuscated() const {
+        return transportObfuscated.load();
     }
     void resumeNetwork(bool partial);
     void pauseNetwork();
@@ -158,6 +161,7 @@ private:
     std::string customServerAddress;
     uint32_t customServerPort = 0;
     std::atomic<int32_t> transportType{-1};
+    std::atomic<bool> transportObfuscated{false};
     bool clientBlocked = true;
     std::string lastInitSystemLangcode = "";
     std::atomic<uint32_t> lastRequestToken{50000000};

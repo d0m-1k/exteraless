@@ -97,6 +97,24 @@ public final class ServerConfig {
         applyTransport(ConnectionsManager.getInstance(account), account);
         // Drop live connections so the new transport takes effect immediately instead of only on
         // the next reconnect.
+        discardGenericConnections(account);
+    }
+
+    public static boolean isObfuscated2(int account) {
+        SharedPreferences preferences = prefs();
+        return preferences != null && preferences.getBoolean("obfuscated" + account, false);
+    }
+
+    public static void setObfuscated2(int account, boolean obfuscated) {
+        SharedPreferences preferences = prefs();
+        if (preferences != null) {
+            preferences.edit().putBoolean("obfuscated" + account, obfuscated).apply();
+        }
+        applyTransport(ConnectionsManager.getInstance(account), account);
+        discardGenericConnections(account);
+    }
+
+    private static void discardGenericConnections(int account) {
         for (int dcId = 1; dcId <= 5; dcId++) {
             ConnectionsManager.getInstance(account).discardConnection(dcId, ConnectionsManager.ConnectionTypeGeneric);
         }
@@ -121,7 +139,7 @@ public final class ServerConfig {
     }
 
     public static void applyTransport(ConnectionsManager connectionsManager, int account) {
-        connectionsManager.setTransport(getTransport(account));
+        connectionsManager.setTransport(getTransport(account), isObfuscated2(account));
     }
 
     /** Applies the stored choice to the native connection of the given account. */

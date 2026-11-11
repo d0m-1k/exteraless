@@ -3647,8 +3647,9 @@ void ConnectionsManager::setCustomServer(std::string address, uint32_t port) {
     });
 }
 
-void ConnectionsManager::setTransport(int32_t transport) {
+void ConnectionsManager::setTransport(int32_t transport, bool obfuscated) {
     transportType = transport;
+    transportObfuscated = obfuscated;
 }
 
 static void getDefaultDatacenterAddresses(uint32_t dcId, bool testBackend, std::vector<TcpAddress> &ipv4, std::vector<TcpAddress> &ipv6) {

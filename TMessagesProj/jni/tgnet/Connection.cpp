@@ -472,12 +472,13 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
         } else {
             currentProtocolType = ProtocolTypeEF;
         }
-        // A transport picked for this account is sent as a plain MTProto transport without the
-        // 64-byte obfuscation header (that header is what proxies use). Proxy secrets keep control
-        // of their own obfuscation, so this only applies to direct connections.
-        int32_t forcedTransport = ConnectionsManager::getInstance(currentDatacenter->instanceNum).getTransport();
-        plainTransport = useSecret == 0 && forcedTransport >= 0;
-        if (plainTransport) {
+        // A transport picked for this account overrides the default. Without Obfuscated2 it is a
+        // plain MTProto transport without the 64-byte random header. Proxy secrets keep control of
+        // their own obfuscation, so this only applies to direct connections.
+        ConnectionsManager &manager = ConnectionsManager::getInstance(currentDatacenter->instanceNum);
+        int32_t forcedTransport = manager.getTransport();
+        bool forcedObfuscated = manager.isTransportObfuscated();
+        if (useSecret == 0 && forcedTransport >= 0) {
             switch (forcedTransport) {
                 case 1:
                     currentProtocolType = ProtocolTypeEE;
@@ -492,6 +493,10 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
                     currentProtocolType = ProtocolTypeEF;
                     break;
             }
+            // Full has no obfuscation marker, so it is always sent as a plain transport.
+            plainTransport = !forcedObfuscated || forcedTransport == 3;
+        } else {
+            plainTransport = false;
         }
     }
 

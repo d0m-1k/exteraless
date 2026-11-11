@@ -850,6 +850,9 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     if (phoneView.transportRow != null) {
                         phoneView.transportRow.setVisibility(hide ? View.GONE : View.VISIBLE);
                     }
+                    if (phoneView.obfuscatedRow != null) {
+                        phoneView.obfuscatedRow.setVisibility(hide ? View.GONE : View.VISIBLE);
+                    }
                 }
             } else if (id == 4) {
                 PhoneView phoneView = (PhoneView)views[VIEW_PHONE_INPUT];
@@ -2076,6 +2079,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         private CheckBoxCell syncContactsBox;
         private TextView serverRow;
         private TextView transportRow;
+        private TextView obfuscatedRow;
 
         @CountryState
         private int countryState = COUNTRY_STATE_NOT_SET_OR_VALID;
@@ -2128,6 +2132,9 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             }
             if (transportRow != null) {
                 transportRow.setText(LocaleController.formatString("TransportRow", R.string.TransportRow, ServerConfig.getTransportName(ServerConfig.getTransport(currentAccount))));
+            }
+            if (obfuscatedRow != null) {
+                obfuscatedRow.setText(LocaleController.formatString("Obfuscated2Row", R.string.Obfuscated2Row, LocaleController.getString(ServerConfig.isObfuscated2(currentAccount) ? R.string.Obfuscated2On : R.string.Obfuscated2Off)));
             }
         }
 
@@ -2626,6 +2633,20 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 addView(transportRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
                 bottomMargin -= 32;
 
+                obfuscatedRow = new TextView(context);
+                obfuscatedRow.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
+                obfuscatedRow.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+                obfuscatedRow.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(8), AndroidUtilities.dp(16), AndroidUtilities.dp(8));
+                obfuscatedRow.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+                obfuscatedRow.setOnClickListener(v -> {
+                    if (getParentActivity() == null) {
+                        return;
+                    }
+                    ServerSettingsDialog.toggleObfuscated2(LoginActivity.this, LoginActivity.this.currentAccount, this::updateServerRows);
+                });
+                addView(obfuscatedRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+                bottomMargin -= 32;
+
                 updateServerRows();
             }
 
@@ -2847,6 +2868,9 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             }
             if (transportRow != null) {
                 transportRow.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+            }
+            if (obfuscatedRow != null) {
+                obfuscatedRow.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
             }
 
             phoneOutlineView.updateColor();

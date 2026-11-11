@@ -42,11 +42,17 @@ public final class ServerSettingsDialog {
         CharSequence[] items = new CharSequence[]{
                 LocaleController.getString(R.string.ServerProd),
                 LocaleController.getString(R.string.ServerTest),
-                LocaleController.getString(R.string.ServerCustom)
+                LocaleController.getString(R.string.ServerCustom),
+                LocaleController.formatString("TransportRow", R.string.TransportRow, ServerConfig.getTransportName(ServerConfig.getTransport(account))),
+                LocaleController.formatString("Obfuscated2Row", R.string.Obfuscated2Row, LocaleController.getString(ServerConfig.isObfuscated2(account) ? R.string.Obfuscated2On : R.string.Obfuscated2Off))
         };
         builder.setItems(items, (dialog, which) -> {
             if (which == 2) {
                 showCustom(fragment, account, onChanged);
+            } else if (which == 3) {
+                showTransport(fragment, account, onChanged);
+            } else if (which == 4) {
+                toggleObfuscated2(fragment, account, onChanged);
             } else {
                 requestMode(fragment, account, which == 1 ? ServerConfig.MODE_TEST : ServerConfig.MODE_PROD, onChanged);
             }
@@ -77,10 +83,25 @@ public final class ServerSettingsDialog {
             if (onChanged != null) {
                 onChanged.run();
             }
-            BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.ServerApplied)).show();
+            if (which == ServerConfig.TRANSPORT_FULL && ServerConfig.isObfuscated2(account)) {
+                BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.Obfuscated2FullHint)).show();
+            } else {
+                BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.ServerApplied)).show();
+            }
         });
         builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
         fragment.showDialog(builder.create());
+    }
+
+    public static void toggleObfuscated2(BaseFragment fragment, int account, Runnable onChanged) {
+        boolean obfuscated = !ServerConfig.isObfuscated2(account);
+        ServerConfig.setObfuscated2(account, obfuscated);
+        if (onChanged != null) {
+            onChanged.run();
+        }
+        BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip,
+                LocaleController.formatString("Obfuscated2Row", R.string.Obfuscated2Row,
+                        LocaleController.getString(obfuscated ? R.string.Obfuscated2On : R.string.Obfuscated2Off))).show();
     }
 
     private static CharSequence transportItem(int transport, int current) {

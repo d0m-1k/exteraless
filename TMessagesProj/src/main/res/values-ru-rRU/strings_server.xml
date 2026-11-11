@@ -19,4 +19,8 @@
     <string name="TransportIntermediate">Intermediate</string>
     <string name="TransportPadded">Padded intermediate</string>
     <string name="TransportFull">Full</string>
+    <string name="Obfuscated2Row">Obfuscated2: %1$s</string>
+    <string name="Obfuscated2On">Вкл</string>
+    <string name="Obfuscated2Off">Выкл</string>
+    <string name="Obfuscated2FullHint">Full всегда отправляется без Obfuscated2</string>
 </resources>

@@ -276,8 +276,8 @@ void clearCustomServer(JNIEnv *env, jclass c, jint instanceNum) {
     ConnectionsManager::getInstance(instanceNum).clearCustomServer();
 }
 
-void setTransport(JNIEnv *env, jclass c, jint instanceNum, jint transport) {
-    ConnectionsManager::getInstance(instanceNum).setTransport((int32_t) transport);
+void setTransport(JNIEnv *env, jclass c, jint instanceNum, jint transport, jboolean obfuscated) {
+    ConnectionsManager::getInstance(instanceNum).setTransport((int32_t) transport, obfuscated);
 }
 
 void pauseNetwork(JNIEnv *env, jclass c, jint instanceNum) {
@@ -566,7 +566,7 @@ static JNINativeMethod ConnectionsManagerMethods[] = {
         {"native_switchBackend", "(IZ)V", (void *) switchBackend},
         {"native_setCustomServer", "(ILjava/lang/String;I)V", (void *) setCustomServer},
         {"native_clearCustomServer", "(I)V", (void *) clearCustomServer},
-        {"native_setTransport", "(II)V", (void *) setTransport},
+        {"native_setTransport", "(IIZ)V", (void *) setTransport},
         {"native_pauseNetwork", "(I)V", (void *) pauseNetwork},
         {"native_resumeNetwork", "(IZ)V", (void *) resumeNetwork},
         {"native_updateDcSettings", "(I)V", (void *) updateDcSettings},
