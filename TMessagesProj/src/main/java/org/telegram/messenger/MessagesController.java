@@ -6511,7 +6511,7 @@ public class MessagesController extends BaseController implements NotificationCe
             if (key.startsWith("account")) {
                 Integer value = (Integer) entry.getValue();
                 if (value == currentAccount) {
-                    int widgetId = Utilities.parseInt(key);
+                    int widgetId = Utilities.parseInt(key.substring("account".length()));
                     if (widgetEditor == null) {
                         widgetEditor = preferences.edit();
                         appWidgetManager = AppWidgetManager.getInstance(ApplicationLoader.applicationContext);
@@ -21633,6 +21633,7 @@ public class MessagesController extends BaseController implements NotificationCe
             int updateMask = 0;
             if (markAsReadMessagesInboxFinal != null || markAsReadMessagesOutboxFinal != null) {
                 getNotificationCenter().postNotificationName(NotificationCenter.messagesRead, markAsReadMessagesInboxFinal, markAsReadMessagesOutboxFinal);
+                WidgetsUpdater.scheduleUpdate(currentAccount);
                 if (markAsReadMessagesInboxFinal != null) {
                     getNotificationsController().processReadMessages(markAsReadMessagesInboxFinal, 0, 0, 0, false);
                     SharedPreferences.Editor editor = notificationsPreferences.edit();
@@ -22571,6 +22572,7 @@ public class MessagesController extends BaseController implements NotificationCe
             }
         }
         getNotificationCenter().postNotificationName(NotificationCenter.didReceiveNewMessages, dialogId, messages, scheduled, mode);
+        WidgetsUpdater.scheduleUpdate(currentAccount);
 
         if (lastMessage == null || scheduled) {
             return false;
