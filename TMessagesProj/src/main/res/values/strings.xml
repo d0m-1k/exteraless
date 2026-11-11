@@ -11696,4 +11696,11 @@
     <string name="ServerApplied">Server updated</string>
     <string name="ServerAlready">This server is already used</string>
     <string name="ServerInvalid">Enter a valid host and port</string>
+    <string name="ServerRow">Server: %1$s</string>
+    <string name="TransportRow">Transport: %1$s</string>
+    <string name="ServerTransport">Transport</string>
+    <string name="TransportAbridged">Abridged</string>
+    <string name="TransportIntermediate">Intermediate</string>
+    <string name="TransportPadded">Padded intermediate</string>
+    <string name="TransportFull">Full</string>
 </resources>

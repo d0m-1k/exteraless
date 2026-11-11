@@ -813,6 +813,7 @@ public class ConnectionsManager extends BaseController {
 
         pushConnectionEnabled = enablePushConnection;
         native_init(currentAccount, version, layer, apiId, deviceModel, systemVersion, appVersion, langCode, systemLangCode, configPath, logPath, regId, cFingerprint, installer, packageId, timezoneOffset, userId, userPremium, enablePushConnection, ApplicationLoader.isNetworkOnline(), ApplicationLoader.getCurrentNetworkType(), SharedConfig.measureDevicePerformanceClass());
+        ServerConfig.applyTransport(this, currentAccount);
         if (ServerConfig.getMode(currentAccount) == ServerConfig.MODE_CUSTOM) {
             ServerConfig.applyCustom(this, currentAccount);
         }
@@ -866,6 +867,10 @@ public class ConnectionsManager extends BaseController {
 
     public void clearCustomServer() {
         native_clearCustomServer(currentAccount);
+    }
+
+    public void setTransport(int transport) {
+        native_setTransport(currentAccount, transport);
     }
 
     public void resumeNetworkMaybe() {
@@ -1167,6 +1172,7 @@ public class ConnectionsManager extends BaseController {
     public static native int native_isTestBackend(int currentAccount);
     public static native void native_setCustomServer(int currentAccount, String address, int port);
     public static native void native_clearCustomServer(int currentAccount);
+    public static native void native_setTransport(int currentAccount, int transport);
     public static native void native_pauseNetwork(int currentAccount);
     public static native void native_setIpStrategy(int currentAccount, byte value);
     public static native void native_updateDcSettings(int currentAccount);

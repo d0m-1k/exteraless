@@ -29,6 +29,10 @@ public final class ServerSettingsDialog {
     }
 
     public static void show(BaseFragment fragment, int account) {
+        show(fragment, account, null);
+    }
+
+    public static void show(BaseFragment fragment, int account, Runnable onChanged) {
         Context context = fragment.getParentActivity();
         if (context == null) {
             return;
@@ -42,12 +46,46 @@ public final class ServerSettingsDialog {
         };
         builder.setItems(items, (dialog, which) -> {
             if (which == 2) {
-                showCustom(fragment, account);
+                showCustom(fragment, account, onChanged);
             } else {
-                requestMode(fragment, account, which == 1 ? ServerConfig.MODE_TEST : ServerConfig.MODE_PROD);
+                requestMode(fragment, account, which == 1 ? ServerConfig.MODE_TEST : ServerConfig.MODE_PROD, onChanged);
             }
         });
         fragment.showDialog(builder.create());
+    }
+
+    /** Transport picker shared by the login screen and Settings. */
+    public static void showTransport(BaseFragment fragment, int account, Runnable onChanged) {
+        Context context = fragment.getParentActivity();
+        if (context == null) {
+            return;
+        }
+        int current = ServerConfig.getTransport(account);
+        CharSequence[] items = new CharSequence[]{
+                transportItem(ServerConfig.TRANSPORT_ABRIDGED, current),
+                transportItem(ServerConfig.TRANSPORT_INTERMEDIATE, current),
+                transportItem(ServerConfig.TRANSPORT_PADDED, current),
+                transportItem(ServerConfig.TRANSPORT_FULL, current)
+        };
+        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        builder.setTitle(LocaleController.getString(R.string.ServerTransport));
+        builder.setItems(items, (dialog, which) -> {
+            if (which == current) {
+                return;
+            }
+            ServerConfig.setTransport(account, which);
+            if (onChanged != null) {
+                onChanged.run();
+            }
+            BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.ServerApplied)).show();
+        });
+        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
+        fragment.showDialog(builder.create());
+    }
+
+    private static CharSequence transportItem(int transport, int current) {
+        String name = ServerConfig.getTransportName(transport);
+        return transport == current ? name + "  ✓" : name;
     }
 
     private static boolean isCurrent(int account, int mode) {
@@ -61,7 +99,7 @@ public final class ServerSettingsDialog {
         return connectionsManager.isTestBackend() == (mode == ServerConfig.MODE_TEST);
     }
 
-    private static void requestMode(BaseFragment fragment, int account, int mode) {
+    private static void requestMode(BaseFragment fragment, int account, int mode, Runnable onChanged) {
         Context context = fragment.getParentActivity();
         if (context == null) {
             return;
@@ -76,15 +114,18 @@ public final class ServerSettingsDialog {
         // Going back from a custom server to production keeps the existing prod auth key, no relogin needed.
         boolean keepSession = mode == ServerConfig.MODE_PROD && !connectionsManager.isTestBackend() && customNow;
         if (activated && !keepSession) {
-            confirmLogout(fragment, account, mode);
+            confirmLogout(fragment, account, mode, onChanged);
         } else {
             ServerConfig.setMode(account, mode);
             ServerConfig.apply(account);
+            if (onChanged != null) {
+                onChanged.run();
+            }
             BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.ServerApplied)).show();
         }
     }
 
-    private static void confirmLogout(BaseFragment fragment, int account, int mode) {
+    private static void confirmLogout(BaseFragment fragment, int account, int mode, Runnable onChanged) {
         Context context = fragment.getParentActivity();
         if (context == null) {
             return;
@@ -95,13 +136,16 @@ public final class ServerSettingsDialog {
         builder.setPositiveButton(LocaleController.getString(R.string.LogOut), (dialog, which) -> {
             ServerConfig.setPending(mode);
             ServerConfig.setMode(account, mode);
+            if (onChanged != null) {
+                onChanged.run();
+            }
             MessagesController.getInstance(account).performLogout(0);
         });
         builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
         fragment.showDialog(builder.create());
     }
 
-    private static void showCustom(BaseFragment fragment, int account) {
+    private static void showCustom(BaseFragment fragment, int account, Runnable onChanged) {
         Context context = fragment.getParentActivity();
         if (context == null) {
             return;
@@ -150,10 +194,13 @@ public final class ServerSettingsDialog {
             ConnectionsManager connectionsManager = ConnectionsManager.getInstance(account);
             if (activated && connectionsManager.isTestBackend()) {
                 // The test auth key is not valid on a production-based custom server.
-                confirmLogout(fragment, account, ServerConfig.MODE_CUSTOM);
+                confirmLogout(fragment, account, ServerConfig.MODE_CUSTOM, onChanged);
             } else {
                 ServerConfig.setMode(account, ServerConfig.MODE_CUSTOM);
                 ServerConfig.apply(account);
+                if (onChanged != null) {
+                    onChanged.run();
+                }
                 BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.ServerApplied)).show();
             }
         });

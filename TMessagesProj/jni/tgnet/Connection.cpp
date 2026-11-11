@@ -69,7 +69,9 @@ void Connection::suspendConnection(bool idle) {
 }
 
 void Connection::onReceivedData(NativeByteBuffer *buffer) {
-    AES_ctr128_encrypt(buffer->bytes(), buffer->bytes(), buffer->limit(), &decryptKey, decryptIv, decryptCount, &decryptNum);
+    if (currentProtocolType != ProtocolTypeFull) {
+        AES_ctr128_encrypt(buffer->bytes(), buffer->bytes(), buffer->limit(), &decryptKey, decryptIv, decryptCount, &decryptNum);
+    }
     
     failedConnectionCount = 0;
 
@@ -204,7 +206,7 @@ void Connection::onReceivedData(NativeByteBuffer *buffer) {
 
             uint32_t fInt = buffer->readUint32(nullptr);
 
-            if ((fInt & (0x80000000)) != 0) {
+            if (currentProtocolType != ProtocolTypeFull && (fInt & (0x80000000)) != 0) {
                 ConnectionsManager::getInstance(currentDatacenter->instanceNum).onConnectionQuickAckReceived(this, fInt & (~(1 << 31)));
                 continue;
             }
@@ -213,7 +215,7 @@ void Connection::onReceivedData(NativeByteBuffer *buffer) {
             len = currentPacketLength + 4;
         }
 
-        if (currentProtocolType != ProtocolTypeDD && currentProtocolType != ProtocolTypeTLS && currentPacketLength % 4 != 0 || currentPacketLength > 2 * 1024 * 1024) {
+        if (currentProtocolType != ProtocolTypeDD && currentProtocolType != ProtocolTypeTLS && currentProtocolType != ProtocolTypeFull && currentPacketLength % 4 != 0 || currentPacketLength > 2 * 1024 * 1024) {
             if (LOGS_ENABLED) DEBUG_D("connection(%p, account%u, dc%u, type %d) received invalid packet length", this, currentDatacenter->instanceNum, currentDatacenter->getDatacenterId(), connectionType);
             reconnect();
             break;
@@ -470,6 +472,25 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
         } else {
             currentProtocolType = ProtocolTypeEF;
         }
+        // A transport picked for this account overrides the default. Proxy secrets keep control of
+        // their own obfuscation, so this only applies to direct connections.
+        int32_t forcedTransport = ConnectionsManager::getInstance(currentDatacenter->instanceNum).getTransport();
+        if (useSecret == 0 && forcedTransport >= 0) {
+            switch (forcedTransport) {
+                case 1:
+                    currentProtocolType = ProtocolTypeEE;
+                    break;
+                case 2:
+                    currentProtocolType = ProtocolTypeDD;
+                    break;
+                case 3:
+                    currentProtocolType = ProtocolTypeFull;
+                    break;
+                default:
+                    currentProtocolType = ProtocolTypeEF;
+                    break;
+            }
+        }
     }
 
     uint32_t additinalPacketSize = 0;
@@ -480,6 +501,9 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
         } else {
             bufferLen += 4;
         }
+    } else if (currentProtocolType == ProtocolTypeFull) {
+        packetLength = buff->limit();
+        bufferLen += 4;
     } else {
         packetLength = buff->limit();
         if (currentProtocolType == ProtocolTypeDD || currentProtocolType == ProtocolTypeTLS) {
@@ -491,20 +515,13 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
             }
             packetLength += additinalPacketSize;
         } else {
-            RAND_bytes((uint8_t *) &additinalPacketSize, 4);
-            if (!encrypted) {
-                additinalPacketSize = additinalPacketSize % 257;
-                uint32_t additionalSize = additinalPacketSize % 4;
-                if (additionalSize != 0) {
-                    additinalPacketSize += (4 - additionalSize);
-                }
-            }
-            packetLength += additinalPacketSize;
+            // Intermediate transport: plain 4-byte length, no transport-level padding.
+            additinalPacketSize = 0;
         }
         bufferLen += 4;
     }
 
-    if (!firstPacketSent) {
+    if (!firstPacketSent && currentProtocolType != ProtocolTypeFull) {
         bufferLen += 64;
     }
 
@@ -519,8 +536,9 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
     uint8_t *bytes = buffer->bytes();
 
     if (!firstPacketSent) {
-        buffer->position(64);
-        while (true) {
+        if (currentProtocolType != ProtocolTypeFull) {
+            buffer->position(64);
+            while (true) {
             RAND_bytes(bytes, 64);
             uint32_t val = (bytes[3] << 24) | (bytes[2] << 16) | (bytes[1] << 8) | (bytes[0]);
             uint32_t val2 = (bytes[7] << 24) | (bytes[6] << 16) | (bytes[5] << 8) | (bytes[4]);
@@ -581,6 +599,7 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
         
         AES_ctr128_encrypt(bytes, temp, 64, &encryptKey, encryptIv, encryptCount, &encryptNum);
         memcpy(bytes + 56, temp + 56, 8);
+        }
         
         firstPacketSent = true;
     }
@@ -602,18 +621,25 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
             AES_ctr128_encrypt(bytes, bytes, 4, &encryptKey, encryptIv, encryptCount, &encryptNum);
         }
     } else {
-        if (reportAck) {
-            packetLength |= 0x80000000;
+        if (currentProtocolType == ProtocolTypeFull) {
+            // Full transport: plain 32-bit little-endian length, no obfuscation layer.
+            buffer->writeInt32(packetLength);
+        } else {
+            if (reportAck) {
+                packetLength |= 0x80000000;
+            }
+            buffer->writeInt32(packetLength);
+            bytes += (buffer->limit() - 4);
+            AES_ctr128_encrypt(bytes, bytes, 4, &encryptKey, encryptIv, encryptCount, &encryptNum);
         }
-        buffer->writeInt32(packetLength);
-        bytes += (buffer->limit() - 4);
-        AES_ctr128_encrypt(bytes, bytes, 4, &encryptKey, encryptIv, encryptCount, &encryptNum);
     }
 
     buffer->rewind();
     writeBuffer(buffer);
     buff->rewind();
-    AES_ctr128_encrypt(buff->bytes(), buff->bytes(), buff->limit(), &encryptKey, encryptIv, encryptCount, &encryptNum);
+    if (currentProtocolType != ProtocolTypeFull) {
+        AES_ctr128_encrypt(buff->bytes(), buff->bytes(), buff->limit(), &encryptKey, encryptIv, encryptCount, &encryptNum);
+    }
     writeBuffer(buff);
     if (buffer2 != nullptr) {
         AES_ctr128_encrypt(buffer2->bytes(), buffer2->bytes(), buffer2->limit(), &encryptKey, encryptIv, encryptCount, &encryptNum);

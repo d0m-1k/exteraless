@@ -20,6 +20,11 @@ public final class ServerConfig {
     public static final int MODE_TEST = 1;
     public static final int MODE_CUSTOM = 2;
 
+    public static final int TRANSPORT_ABRIDGED = 0;
+    public static final int TRANSPORT_INTERMEDIATE = 1;
+    public static final int TRANSPORT_PADDED = 2;
+    public static final int TRANSPORT_FULL = 3;
+
     private static final String PREFS = "exteraless_server";
     private static final long PENDING_TTL_MS = 10 * 60 * 1000L;
 
@@ -79,11 +84,52 @@ public final class ServerConfig {
         }
     }
 
+    public static int getTransport(int account) {
+        SharedPreferences preferences = prefs();
+        return preferences == null ? TRANSPORT_ABRIDGED : preferences.getInt("transport" + account, TRANSPORT_ABRIDGED);
+    }
+
+    public static void setTransport(int account, int transport) {
+        SharedPreferences preferences = prefs();
+        if (preferences != null) {
+            preferences.edit().putInt("transport" + account, transport).apply();
+        }
+        applyTransport(ConnectionsManager.getInstance(account), account);
+        // Drop live connections so the new transport takes effect immediately instead of only on
+        // the next reconnect.
+        for (int dcId = 1; dcId <= 5; dcId++) {
+            ConnectionsManager.getInstance(account).discardConnection(dcId, ConnectionsManager.ConnectionTypeGeneric);
+        }
+    }
+
+    public static String getTransportName(int transport) {
+        switch (transport) {
+            case TRANSPORT_INTERMEDIATE:
+                return LocaleController.getString(R.string.TransportIntermediate);
+            case TRANSPORT_PADDED:
+                return LocaleController.getString(R.string.TransportPadded);
+            case TRANSPORT_FULL:
+                return LocaleController.getString(R.string.TransportFull);
+            default:
+                return LocaleController.getString(R.string.TransportAbridged);
+        }
+    }
+
+    /** Re-applies the stored transport, e.g. when the account's native connection is (re)created. */
+    public static void applyTransport(int account) {
+        applyTransport(ConnectionsManager.getInstance(account), account);
+    }
+
+    public static void applyTransport(ConnectionsManager connectionsManager, int account) {
+        connectionsManager.setTransport(getTransport(account));
+    }
+
     /** Applies the stored choice to the native connection of the given account. */
     public static void apply(int account) {
         SharedPreferences preferences = prefs();
         ConnectionsManager connectionsManager = ConnectionsManager.getInstance(account);
         final int mode = getMode(account);
+        applyTransport(connectionsManager, account);
         final boolean wantTest = mode == MODE_TEST;
         boolean wasCustom = preferences != null && preferences.getBoolean("custom" + account, false);
         if (connectionsManager.isTestBackend() != wantTest) {

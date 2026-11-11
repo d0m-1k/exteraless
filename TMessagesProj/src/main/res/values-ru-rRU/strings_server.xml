@@ -12,4 +12,11 @@
     <string name="ServerApplied">Сервер изменён</string>
     <string name="ServerAlready">Этот сервер уже используется</string>
     <string name="ServerInvalid">Укажите корректный хост и порт</string>
+    <string name="ServerRow">Сервер: %1$s</string>
+    <string name="TransportRow">Транспорт: %1$s</string>
+    <string name="ServerTransport">Транспорт</string>
+    <string name="TransportAbridged">Abridged</string>
+    <string name="TransportIntermediate">Intermediate</string>
+    <string name="TransportPadded">Padded intermediate</string>
+    <string name="TransportFull">Full</string>
 </resources>

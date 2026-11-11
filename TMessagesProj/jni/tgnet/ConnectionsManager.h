@@ -65,6 +65,10 @@ public:
     void switchBackend(bool restart);
     void setCustomServer(std::string address, uint32_t port);
     void clearCustomServer();
+    void setTransport(int32_t transport);
+    int32_t getTransport() const {
+        return transportType.load();
+    }
     void resumeNetwork(bool partial);
     void pauseNetwork();
     void setNetworkAvailable(bool value, int32_t type, bool slow);
@@ -153,6 +157,7 @@ private:
     bool testBackend = false;
     std::string customServerAddress;
     uint32_t customServerPort = 0;
+    std::atomic<int32_t> transportType{-1};
     bool clientBlocked = true;
     std::string lastInitSystemLangcode = "";
     std::atomic<uint32_t> lastRequestToken{50000000};

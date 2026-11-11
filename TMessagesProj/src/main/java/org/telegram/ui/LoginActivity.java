@@ -844,8 +844,12 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 }
             } else if (id == 3) {
                 PhoneView phoneView = (PhoneView)views[VIEW_PHONE_INPUT];
-                if (phoneView.testBackendCheckBox != null) {
-                     phoneView.testBackendCheckBox.setVisibility(phoneView.testBackendCheckBox.getVisibility() == View.GONE ? View.VISIBLE : View.GONE);
+                if (phoneView.serverRow != null) {
+                    boolean hide = phoneView.serverRow.getVisibility() != View.GONE;
+                    phoneView.serverRow.setVisibility(hide ? View.GONE : View.VISIBLE);
+                    if (phoneView.transportRow != null) {
+                        phoneView.transportRow.setVisibility(hide ? View.GONE : View.VISIBLE);
+                    }
                 }
             } else if (id == 4) {
                 PhoneView phoneView = (PhoneView)views[VIEW_PHONE_INPUT];
@@ -2070,7 +2074,8 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         private ImageView chevronRight;
         private int chevronRightFilterColor, chevronRightSelectorColor;
         private CheckBoxCell syncContactsBox;
-        private CheckBoxCell testBackendCheckBox;
+        private TextView serverRow;
+        private TextView transportRow;
 
         @CountryState
         private int countryState = COUNTRY_STATE_NOT_SET_OR_VALID;
@@ -2114,6 +2119,16 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     }
                 })
                 .show();
+        }
+
+        private void updateServerRows() {
+            testBackend = ServerConfig.getMode(currentAccount) == ServerConfig.MODE_TEST;
+            if (serverRow != null) {
+                serverRow.setText(LocaleController.formatString("ServerRow", R.string.ServerRow, ServerConfig.getDisplay(currentAccount)));
+            }
+            if (transportRow != null) {
+                transportRow.setText(LocaleController.formatString("TransportRow", R.string.TransportRow, ServerConfig.getTransportName(ServerConfig.getTransport(currentAccount))));
+            }
         }
 
         public PhoneView(Context context) {
@@ -2579,33 +2594,39 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 });
             }
 
-            final boolean allowTestBackend = true;
-            if (allowTestBackend && activityMode == MODE_LOGIN) {
-                testBackendCheckBox = new CheckBoxCell(context, 2);
-                testBackendCheckBox.setText(getString(R.string.TestBackend), "", testBackend = ServerConfig.getMode(currentAccount) == ServerConfig.MODE_TEST, false);
-                addView(testBackendCheckBox, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, Gravity.LEFT | Gravity.TOP, 16, 0, 16 + (LocaleController.isRTL && AndroidUtilities.isSmallScreen() ? 56 : 0), 0));
-                bottomMargin -= 24;
-                testBackendCheckBox.setOnClickListener(v -> {
+            if (activityMode == MODE_LOGIN) {
+                serverRow = new TextView(context);
+                serverRow.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
+                serverRow.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+                serverRow.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(8), AndroidUtilities.dp(16), AndroidUtilities.dp(8));
+                serverRow.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+                serverRow.setOnClickListener(v -> {
                     if (getParentActivity() == null) {
                         return;
                     }
-                    CheckBoxCell cell = (CheckBoxCell) v;
-                    testBackend = !testBackend;
-                    cell.setChecked(testBackend, true);
-
-                    boolean testBackend = allowTestBackend && getConnectionsManager().isTestBackend();
-                    ServerConfig.setMode(LoginActivity.this.currentAccount, LoginActivity.this.testBackend ? ServerConfig.MODE_TEST : ServerConfig.MODE_PROD);
-                    if (testBackend != LoginActivity.this.testBackend) {
-                        ServerConfig.apply(LoginActivity.this.currentAccount);
-                    }
-                    loadCountries();
-
-                    if (LoginActivity.this.testBackend) {
-                        BulletinFactory.of(slideViewsContainer, null).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString("TestBackendOn", R.string.TestBackendOn)).show();
-                    } else {
-                        BulletinFactory.of(slideViewsContainer, null).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString("TestBackendOff", R.string.TestBackendOff)).show();
-                    }
+                    ServerSettingsDialog.show(LoginActivity.this, LoginActivity.this.currentAccount, () -> {
+                        updateServerRows();
+                        loadCountries();
+                    });
                 });
+                addView(serverRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+                bottomMargin -= 32;
+
+                transportRow = new TextView(context);
+                transportRow.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
+                transportRow.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+                transportRow.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(8), AndroidUtilities.dp(16), AndroidUtilities.dp(8));
+                transportRow.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+                transportRow.setOnClickListener(v -> {
+                    if (getParentActivity() == null) {
+                        return;
+                    }
+                    ServerSettingsDialog.showTransport(LoginActivity.this, LoginActivity.this.currentAccount, this::updateServerRows);
+                });
+                addView(transportRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+                bottomMargin -= 32;
+
+                updateServerRows();
             }
 
             if (bottomMargin > 0 && !AndroidUtilities.isSmallScreen()) {
@@ -2821,9 +2842,11 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 syncContactsBox.setSquareCheckBoxColor(Theme.key_checkboxSquareUnchecked, Theme.key_checkboxSquareBackground, Theme.key_checkboxSquareCheck);
                 syncContactsBox.updateTextColor();
             }
-            if (testBackendCheckBox != null) {
-                testBackendCheckBox.setSquareCheckBoxColor(Theme.key_checkboxSquareUnchecked, Theme.key_checkboxSquareBackground, Theme.key_checkboxSquareCheck);
-                testBackendCheckBox.updateTextColor();
+            if (serverRow != null) {
+                serverRow.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+            }
+            if (transportRow != null) {
+                transportRow.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
             }
 
             phoneOutlineView.updateColor();
@@ -3175,12 +3198,9 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             if (activityMode == MODE_LOGIN) {
                 if (!testBackend && "999".equals(codeField.getText().toString())) {
                     testBackend = true;
-                    if (testBackendCheckBox != null) {
-                        testBackendCheckBox.setChecked(true, true);
-                    }
-                    if (!getConnectionsManager().isTestBackend()) {
-                        getConnectionsManager().switchBackend(false);
-                    }
+                    ServerConfig.setMode(currentAccount, ServerConfig.MODE_TEST);
+                    ServerConfig.apply(currentAccount);
+                    updateServerRows();
                 }
                 if (getParentActivity() instanceof LaunchActivity) {
                     for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {

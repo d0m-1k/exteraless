@@ -3647,6 +3647,10 @@ void ConnectionsManager::setCustomServer(std::string address, uint32_t port) {
     });
 }
 
+void ConnectionsManager::setTransport(int32_t transport) {
+    transportType = transport;
+}
+
 static void getDefaultDatacenterAddresses(uint32_t dcId, bool testBackend, std::vector<TcpAddress> &ipv4, std::vector<TcpAddress> &ipv6) {
     if (!testBackend) {
         switch (dcId) {
