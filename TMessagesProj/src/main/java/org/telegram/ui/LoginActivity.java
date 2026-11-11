@@ -147,6 +147,7 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.SRPHelper;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.ServerConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.RequestDelegate;
@@ -571,6 +572,13 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
     public boolean onFragmentCreate() {
         getNotificationCenter().addWeakObserver(this, NotificationCenter.didUpdateConnectionState);
         getNotificationCenter().addWeakObserver(this, NotificationCenter.newSuggestionsAvailable);
+        if (activityMode == MODE_LOGIN) {
+            int pendingServerMode = ServerConfig.consumePending();
+            if (pendingServerMode >= 0) {
+                ServerConfig.setMode(currentAccount, pendingServerMode);
+            }
+            ServerConfig.apply(currentAccount);
+        }
         return super.onFragmentCreate();
     }
 
@@ -2574,7 +2582,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             final boolean allowTestBackend = true;
             if (allowTestBackend && activityMode == MODE_LOGIN) {
                 testBackendCheckBox = new CheckBoxCell(context, 2);
-                testBackendCheckBox.setText(getString(R.string.TestBackend), "", testBackend = getConnectionsManager().isTestBackend(), false);
+                testBackendCheckBox.setText(getString(R.string.TestBackend), "", testBackend = ServerConfig.getMode(currentAccount) == ServerConfig.MODE_TEST, false);
                 addView(testBackendCheckBox, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, Gravity.LEFT | Gravity.TOP, 16, 0, 16 + (LocaleController.isRTL && AndroidUtilities.isSmallScreen() ? 56 : 0), 0));
                 bottomMargin -= 24;
                 testBackendCheckBox.setOnClickListener(v -> {
@@ -2586,8 +2594,9 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     cell.setChecked(testBackend, true);
 
                     boolean testBackend = allowTestBackend && getConnectionsManager().isTestBackend();
+                    ServerConfig.setMode(LoginActivity.this.currentAccount, LoginActivity.this.testBackend ? ServerConfig.MODE_TEST : ServerConfig.MODE_PROD);
                     if (testBackend != LoginActivity.this.testBackend) {
-                        getConnectionsManager().switchBackend(false);
+                        ServerConfig.apply(LoginActivity.this.currentAccount);
                     }
                     loadCountries();
 
@@ -2597,9 +2606,6 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                         BulletinFactory.of(slideViewsContainer, null).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString("TestBackendOff", R.string.TestBackendOff)).show();
                     }
                 });
-                if (!testBackend) {
-                    testBackendCheckBox.setVisibility(GONE);
-                }
             }
 
             if (bottomMargin > 0 && !AndroidUtilities.isSmallScreen()) {

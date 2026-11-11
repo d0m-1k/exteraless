@@ -11684,4 +11684,16 @@
     <string name="FpnvConsentCountry">Country</string>
     <string name="FpnvConsentMccMnc">MCC / MNC</string>
     <string name="FpnvConsentPhoneNumber">Phone Number</string>
+    <string name="ServerSettings">Server</string>
+    <string name="ServerSettingsInfo">Prod, test or your own server</string>
+    <string name="ServerProd">Prod</string>
+    <string name="ServerTest">Test</string>
+    <string name="ServerCustom">Custom server</string>
+    <string name="ServerHost">Host or IP address</string>
+    <string name="ServerPort">Port</string>
+    <string name="ServerCustomHint">All Telegram connections of this account will go to this host. The server must speak MTProto.</string>
+    <string name="ServerChangeLogout">Changing the server signs you out of this account: the current session belongs to another backend. Continue?</string>
+    <string name="ServerApplied">Server updated</string>
+    <string name="ServerAlready">This server is already used</string>
+    <string name="ServerInvalid">Enter a valid host and port</string>
 </resources>

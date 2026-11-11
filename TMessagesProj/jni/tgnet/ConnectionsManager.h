@@ -63,6 +63,8 @@ public:
     void setUserId(int64_t userId);
     void setUserPremium(bool premium);
     void switchBackend(bool restart);
+    void setCustomServer(std::string address, uint32_t port);
+    void clearCustomServer();
     void resumeNetwork(bool partial);
     void pauseNetwork();
     void setNetworkAvailable(bool value, int32_t type, bool slow);
@@ -92,6 +94,7 @@ private:
     static void *ThreadProc(void *data);
 
     void initDatacenters();
+    void applyCustomServerAddresses();
     void loadConfig();
     void saveConfig();
     void saveConfigInternal(NativeByteBuffer *buffer);
@@ -148,6 +151,8 @@ private:
     int32_t pingTime;
     int64_t pingTimeMs;
     bool testBackend = false;
+    std::string customServerAddress;
+    uint32_t customServerPort = 0;
     bool clientBlocked = true;
     std::string lastInitSystemLangcode = "";
     std::atomic<uint32_t> lastRequestToken{50000000};

@@ -2094,6 +2094,8 @@ void ConnectionsManager::switchBackend(bool restart) {
     scheduleTask([&, restart] {
         currentDatacenterId = 1;
         testBackend = !testBackend;
+        customServerAddress.clear();
+        customServerPort = 0;
         if (!restart) {
             Handshake::cleanupServerKeys();
         }
@@ -3546,7 +3548,11 @@ void ConnectionsManager::updateDcSettings(uint32_t dcNum, bool workaround, bool 
                         moveToDatacenter(iter.first);
                     }
                 }
-                saveConfig();
+                if (!customServerAddress.empty()) {
+                    applyCustomServerAddresses();
+                } else {
+                    saveConfig();
+                }
                 scheduleTask([&] {
                     processRequestQueue(AllConnectionTypes, 0);
                 });
@@ -3631,6 +3637,114 @@ void ConnectionsManager::applyDatacenterAddress(uint32_t datacenterId, std::stri
             updateDcSettings(datacenterId, false, false);
         }
     });
+}
+
+void ConnectionsManager::setCustomServer(std::string address, uint32_t port) {
+    scheduleTask([&, address, port] {
+        customServerAddress = address;
+        customServerPort = port;
+        applyCustomServerAddresses();
+    });
+}
+
+static void getDefaultDatacenterAddresses(uint32_t dcId, bool testBackend, std::vector<TcpAddress> &ipv4, std::vector<TcpAddress> &ipv6) {
+    if (!testBackend) {
+        switch (dcId) {
+            case 1:
+                ipv4.emplace_back("149.154.175.50", 443, 0, "");
+                ipv6.emplace_back("2001:b28:f23d:f001:0000:0000:0000:000a", 443, 1, "");
+                break;
+            case 2:
+                ipv4.emplace_back("149.154.167.51", 443, 0, "");
+                ipv4.emplace_back("95.161.76.100", 443, 0, "");
+                ipv6.emplace_back("2001:67c:4e8:f002:0000:0000:0000:000a", 443, 1, "");
+                break;
+            case 3:
+                ipv4.emplace_back("149.154.175.100", 443, 0, "");
+                ipv6.emplace_back("2001:b28:f23d:f003:0000:0000:0000:000a", 443, 1, "");
+                break;
+            case 4:
+                ipv4.emplace_back("149.154.167.91", 443, 0, "");
+                ipv6.emplace_back("2001:67c:4e8:f004:0000:0000:0000:000a", 443, 1, "");
+                break;
+            case 5:
+                ipv4.emplace_back("149.154.171.5", 443, 0, "");
+                ipv6.emplace_back("2001:b28:f23f:f005:0000:0000:0000:000a", 443, 1, "");
+                break;
+            default:
+                break;
+        }
+    } else {
+        switch (dcId) {
+            case 1:
+                ipv4.emplace_back("149.154.175.40", 443, 0, "");
+                ipv6.emplace_back("2001:b28:f23d:f001:0000:0000:0000:000e", 443, 1, "");
+                break;
+            case 2:
+                ipv4.emplace_back("149.154.167.40", 443, 0, "");
+                ipv6.emplace_back("2001:67c:4e8:f002:0000:0000:0000:000e", 443, 1, "");
+                break;
+            case 3:
+                ipv4.emplace_back("149.154.175.117", 443, 0, "");
+                ipv6.emplace_back("2001:b28:f23d:f003:0000:0000:0000:000e", 443, 1, "");
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+void ConnectionsManager::clearCustomServer() {
+    scheduleTask([&] {
+        customServerAddress.clear();
+        customServerPort = 0;
+        // Restore the hardcoded addresses without dropping the datacenter auth keys.
+        for (uint32_t dcId = 1; dcId <= 5; dcId++) {
+            Datacenter *datacenter = getDatacenterWithId(dcId);
+            if (datacenter == nullptr) {
+                continue;
+            }
+            std::vector<TcpAddress> ipv4;
+            std::vector<TcpAddress> ipv6;
+            getDefaultDatacenterAddresses(dcId, testBackend, ipv4, ipv6);
+            datacenter->suspendConnections(true);
+            datacenter->replaceAddresses(ipv4, 0);
+            datacenter->replaceAddresses(ipv6, 1);
+            std::vector<TcpAddress> emptyAddresses;
+            datacenter->replaceAddresses(emptyAddresses, 2);
+            datacenter->replaceAddresses(emptyAddresses, 3);
+            datacenter->resetAddressAndPortNum();
+        }
+        saveConfig();
+        // The config may also contain fresh download/CDN addresses.
+        updateDcSettings(0, false, false);
+    });
+}
+
+void ConnectionsManager::applyCustomServerAddresses() {
+    if (customServerAddress.empty() || customServerPort == 0) {
+        return;
+    }
+    std::vector<TcpAddress> addresses;
+    addresses.emplace_back(customServerAddress, customServerPort, 0, "");
+    std::vector<TcpAddress> emptyAddresses;
+    for (auto & it : datacenters) {
+        if (it.first < 1 || it.first > 5) {
+            continue;
+        }
+        Datacenter *datacenter = it.second;
+        datacenter->suspendConnections(true);
+        datacenter->replaceAddresses(addresses, 0);
+        // Do not let the client fall back to the official IPv6/download addresses.
+        datacenter->replaceAddresses(emptyAddresses, 1);
+        datacenter->replaceAddresses(emptyAddresses, 2);
+        datacenter->replaceAddresses(emptyAddresses, 3);
+        datacenter->resetAddressAndPortNum();
+        if (datacenter->isHandshakingAny()) {
+            datacenter->beginHandshake(HandshakeTypeCurrent, true);
+        }
+    }
+    saveConfig();
 }
 
 ConnectionState ConnectionsManager::getConnectionState() {

@@ -48,6 +48,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.PushListenerController;
+import org.telegram.messenger.ServerConfig;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.StatsController;
 import org.telegram.messenger.UserConfig;
@@ -812,6 +813,9 @@ public class ConnectionsManager extends BaseController {
 
         pushConnectionEnabled = enablePushConnection;
         native_init(currentAccount, version, layer, apiId, deviceModel, systemVersion, appVersion, langCode, systemLangCode, configPath, logPath, regId, cFingerprint, installer, packageId, timezoneOffset, userId, userPremium, enablePushConnection, ApplicationLoader.isNetworkOnline(), ApplicationLoader.getCurrentNetworkType(), SharedConfig.measureDevicePerformanceClass());
+        if (ServerConfig.getMode(currentAccount) == ServerConfig.MODE_CUSTOM) {
+            ServerConfig.applyCustom(this, currentAccount);
+        }
         checkConnection();
     }
 
@@ -854,6 +858,14 @@ public class ConnectionsManager extends BaseController {
 
     public boolean isTestBackend() {
         return native_isTestBackend(currentAccount) != 0;
+    }
+
+    public void setCustomServer(String address, int port) {
+        native_setCustomServer(currentAccount, address, port);
+    }
+
+    public void clearCustomServer() {
+        native_clearCustomServer(currentAccount);
     }
 
     public void resumeNetworkMaybe() {
@@ -1153,6 +1165,8 @@ public class ConnectionsManager extends BaseController {
 
     public static native void native_switchBackend(int currentAccount, boolean restart);
     public static native int native_isTestBackend(int currentAccount);
+    public static native void native_setCustomServer(int currentAccount, String address, int port);
+    public static native void native_clearCustomServer(int currentAccount);
     public static native void native_pauseNetwork(int currentAccount);
     public static native void native_setIpStrategy(int currentAccount, byte value);
     public static native void native_updateDcSettings(int currentAccount);

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ServerSettings">Сервер</string>
+    <string name="ServerSettingsInfo">Prod, тест или свой сервер</string>
+    <string name="ServerProd">Prod</string>
+    <string name="ServerTest">Тест</string>
+    <string name="ServerCustom">Свой сервер</string>
+    <string name="ServerHost">Хост или IP-адрес</string>
+    <string name="ServerPort">Порт</string>
+    <string name="ServerCustomHint">Все соединения этого аккаунта пойдут на этот хост. Сервер должен поддерживать MTProto.</string>
+    <string name="ServerChangeLogout">При смене сервера придётся войти в аккаунт заново: текущая сессия принадлежит другому серверу. Продолжить?</string>
+    <string name="ServerApplied">Сервер изменён</string>
+    <string name="ServerAlready">Этот сервер уже используется</string>
+    <string name="ServerInvalid">Укажите корректный хост и порт</string>
+</resources>

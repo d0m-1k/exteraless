@@ -262,6 +262,20 @@ void switchBackend(JNIEnv *env, jclass c, jint instanceNum, jboolean restart) {
     ConnectionsManager::getInstance(instanceNum).switchBackend(restart);
 }
 
+void setCustomServer(JNIEnv *env, jclass c, jint instanceNum, jstring address, jint port) {
+    std::string value;
+    if (address != nullptr) {
+        const char *valueStr = env->GetStringUTFChars(address, 0);
+        value = std::string(valueStr);
+        env->ReleaseStringUTFChars(address, valueStr);
+    }
+    ConnectionsManager::getInstance(instanceNum).setCustomServer(value, (uint32_t) port);
+}
+
+void clearCustomServer(JNIEnv *env, jclass c, jint instanceNum) {
+    ConnectionsManager::getInstance(instanceNum).clearCustomServer();
+}
+
 void pauseNetwork(JNIEnv *env, jclass c, jint instanceNum) {
     ConnectionsManager::getInstance(instanceNum).pauseNetwork();
 }
@@ -546,6 +560,8 @@ static JNINativeMethod ConnectionsManagerMethods[] = {
         {"native_setRegId", "(ILjava/lang/String;)V", (void *) setRegId},
         {"native_setSystemLangCode", "(ILjava/lang/String;)V", (void *) setSystemLangCode},
         {"native_switchBackend", "(IZ)V", (void *) switchBackend},
+        {"native_setCustomServer", "(ILjava/lang/String;I)V", (void *) setCustomServer},
+        {"native_clearCustomServer", "(I)V", (void *) clearCustomServer},
         {"native_pauseNetwork", "(I)V", (void *) pauseNetwork},
         {"native_resumeNetwork", "(IZ)V", (void *) resumeNetwork},
         {"native_updateDcSettings", "(I)V", (void *) updateDcSettings},
