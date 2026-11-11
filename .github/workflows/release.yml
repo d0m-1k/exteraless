@@ -32,7 +32,7 @@ jobs:
       CCACHE_HARDLINK: "true"
       CCACHE_NOHASHDIR: "true"
       CCACHE_MAXSIZE: "2G"
-      NATIVE_TARGET: "universal"
+      NATIVE_TARGET: "arm64-v8a"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -54,6 +54,7 @@ jobs:
         uses: hendrikmuhs/ccache-action@v1.2.23
         with:
           key: android-ndk
+          install: binary
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
       - name: Set up Android SDK Tools
@@ -62,8 +63,11 @@ jobs:
           packages: "build-tools;36.0.0 ndk;27.2.12479018 platforms;android-37.0"
       - name: Install Native Build Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends --yes nasm
+          if [ "$NATIVE_TARGET" = "arm64-v8a" ] || [ "$NATIVE_TARGET" = "armeabi-v7a" ]; then
+            echo "arm64 target uses Clang's integrated assembler; NASM is not needed"
+          else
+            sudo apt-get update && sudo apt-get install --no-install-recommends --yes nasm
+          fi
       - name: Configure Android SDK Path
         run: |
           echo "sdk.dir=${ANDROID_HOME}" >> local.properties
