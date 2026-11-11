@@ -69,7 +69,7 @@ void Connection::suspendConnection(bool idle) {
 }
 
 void Connection::onReceivedData(NativeByteBuffer *buffer) {
-    if (currentProtocolType != ProtocolTypeFull) {
+    if (!plainTransport) {
         AES_ctr128_encrypt(buffer->bytes(), buffer->bytes(), buffer->limit(), &decryptKey, decryptIv, decryptCount, &decryptNum);
     }
     
@@ -472,10 +472,12 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
         } else {
             currentProtocolType = ProtocolTypeEF;
         }
-        // A transport picked for this account overrides the default. Proxy secrets keep control of
-        // their own obfuscation, so this only applies to direct connections.
+        // A transport picked for this account is sent as a plain MTProto transport without the
+        // 64-byte obfuscation header (that header is what proxies use). Proxy secrets keep control
+        // of their own obfuscation, so this only applies to direct connections.
         int32_t forcedTransport = ConnectionsManager::getInstance(currentDatacenter->instanceNum).getTransport();
-        if (useSecret == 0 && forcedTransport >= 0) {
+        plainTransport = useSecret == 0 && forcedTransport >= 0;
+        if (plainTransport) {
             switch (forcedTransport) {
                 case 1:
                     currentProtocolType = ProtocolTypeEE;
@@ -521,7 +523,7 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
         bufferLen += 4;
     }
 
-    if (!firstPacketSent && currentProtocolType != ProtocolTypeFull) {
+    if (!firstPacketSent && !plainTransport) {
         bufferLen += 64;
     }
 
@@ -536,7 +538,7 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
     uint8_t *bytes = buffer->bytes();
 
     if (!firstPacketSent) {
-        if (currentProtocolType != ProtocolTypeFull) {
+        if (!plainTransport) {
             buffer->position(64);
             while (true) {
             RAND_bytes(bytes, 64);
@@ -609,26 +611,30 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
                 packetLength |= (1 << 7);
             }
             buffer->writeByte((uint8_t) packetLength);
-            bytes += (buffer->limit() - 1);
-            AES_ctr128_encrypt(bytes, bytes, 1, &encryptKey, encryptIv, encryptCount, &encryptNum);
+            if (!plainTransport) {
+                bytes += (buffer->limit() - 1);
+                AES_ctr128_encrypt(bytes, bytes, 1, &encryptKey, encryptIv, encryptCount, &encryptNum);
+            }
         } else {
             packetLength = (packetLength << 8) + 0x7f;
             if (reportAck) {
                 packetLength |= (1 << 7);
             }
             buffer->writeInt32(packetLength);
-            bytes += (buffer->limit() - 4);
-            AES_ctr128_encrypt(bytes, bytes, 4, &encryptKey, encryptIv, encryptCount, &encryptNum);
-        }
-    } else {
-        if (currentProtocolType == ProtocolTypeFull) {
-            // Full transport: plain 32-bit little-endian length, no obfuscation layer.
-            buffer->writeInt32(packetLength);
-        } else {
-            if (reportAck) {
-                packetLength |= 0x80000000;
+            if (!plainTransport) {
+                bytes += (buffer->limit() - 4);
+                AES_ctr128_encrypt(bytes, bytes, 4, &encryptKey, encryptIv, encryptCount, &encryptNum);
             }
-            buffer->writeInt32(packetLength);
+        }
+    } else if (currentProtocolType == ProtocolTypeFull) {
+        // Full transport: plain 32-bit little-endian length, no obfuscation layer.
+        buffer->writeInt32(packetLength);
+    } else {
+        if (reportAck) {
+            packetLength |= 0x80000000;
+        }
+        buffer->writeInt32(packetLength);
+        if (!plainTransport) {
             bytes += (buffer->limit() - 4);
             AES_ctr128_encrypt(bytes, bytes, 4, &encryptKey, encryptIv, encryptCount, &encryptNum);
         }
@@ -637,12 +643,14 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
     buffer->rewind();
     writeBuffer(buffer);
     buff->rewind();
-    if (currentProtocolType != ProtocolTypeFull) {
+    if (!plainTransport) {
         AES_ctr128_encrypt(buff->bytes(), buff->bytes(), buff->limit(), &encryptKey, encryptIv, encryptCount, &encryptNum);
     }
     writeBuffer(buff);
     if (buffer2 != nullptr) {
-        AES_ctr128_encrypt(buffer2->bytes(), buffer2->bytes(), buffer2->limit(), &encryptKey, encryptIv, encryptCount, &encryptNum);
+        if (!plainTransport) {
+            AES_ctr128_encrypt(buffer2->bytes(), buffer2->bytes(), buffer2->limit(), &encryptKey, encryptIv, encryptCount, &encryptNum);
+        }
         writeBuffer(buffer2);
     }
 }

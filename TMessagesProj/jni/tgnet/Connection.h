@@ -74,6 +74,7 @@ private:
     void onDisconnectedInternal(int32_t reason, int32_t error);
 
     ProtocolType currentProtocolType = ProtocolTypeEE;
+    bool plainTransport = false;
 
     TcpConnectionState connectionState = TcpConnectionStageIdle;
     uint32_t connectionToken = 0;
