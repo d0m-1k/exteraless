@@ -418,7 +418,7 @@ void Handshake::processHandshakeResponse_resPQ(TLObject *message, int64_t messag
         } else {
             // A custom server can pin its own RSA key; it is used as-is and the fingerprints the
             // server advertises are ignored, because they may not be known to the client.
-            const std::string &customKey = ConnectionsManager::getInstance(currentDatacenter->instanceNum).getServerPublicKey();
+            std::string customKey = ConnectionsManager::getInstance(currentDatacenter->instanceNum).getServerPublicKey();
             if (!customKey.empty()) {
                 int64_t fingerprint = ConnectionsManager::getInstance(currentDatacenter->instanceNum).getServerPublicKeyFingerprint();
                 if (fingerprint == 0) {
@@ -429,6 +429,16 @@ void Handshake::processHandshakeResponse_resPQ(TLObject *message, int64_t messag
                     }
                 }
                 if (fingerprint != 0) {
+                    bool advertised = false;
+                    for (uint32_t a = 0; a < count1; a++) {
+                        if ((uint64_t) result->server_public_key_fingerprints[a] == (uint64_t) fingerprint) {
+                            advertised = true;
+                            break;
+                        }
+                    }
+                    if (!advertised && LOGS_ENABLED) {
+                        DEBUG_W("account%u dc%u handshake: pinned public key fingerprint %llx is not advertised by the server", currentDatacenter->instanceNum, currentDatacenter->datacenterId, (unsigned long long) fingerprint);
+                    }
                     key = customKey;
                     keyFingerprint = fingerprint;
                 }
