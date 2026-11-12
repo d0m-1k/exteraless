@@ -262,6 +262,24 @@ void switchBackend(JNIEnv *env, jclass c, jint instanceNum, jboolean restart) {
     ConnectionsManager::getInstance(instanceNum).switchBackend(restart);
 }
 
+void setTestBackend(JNIEnv *env, jclass c, jint instanceNum, jboolean test) {
+    ConnectionsManager::getInstance(instanceNum).setTestBackend(test);
+}
+
+jboolean hasCustomServer(JNIEnv *env, jclass c, jint instanceNum) {
+    return ConnectionsManager::getInstance(instanceNum).hasCustomServer() ? JNI_TRUE : JNI_FALSE;
+}
+
+jboolean isValidServerKey(JNIEnv *env, jclass c, jint instanceNum, jstring key) {
+    std::string value;
+    if (key != nullptr) {
+        const char *valueStr = env->GetStringUTFChars(key, 0);
+        value = std::string(valueStr);
+        env->ReleaseStringUTFChars(key, valueStr);
+    }
+    return Handshake::isValidServerKey(value) ? JNI_TRUE : JNI_FALSE;
+}
+
 void setCustomServer(JNIEnv *env, jclass c, jint instanceNum, jstring address, jint port) {
     std::string value;
     if (address != nullptr) {
@@ -574,6 +592,9 @@ static JNINativeMethod ConnectionsManagerMethods[] = {
         {"native_setRegId", "(ILjava/lang/String;)V", (void *) setRegId},
         {"native_setSystemLangCode", "(ILjava/lang/String;)V", (void *) setSystemLangCode},
         {"native_switchBackend", "(IZ)V", (void *) switchBackend},
+        {"native_setTestBackend", "(IZ)V", (void *) setTestBackend},
+        {"native_hasCustomServer", "(I)Z", (void *) hasCustomServer},
+        {"native_isValidServerKey", "(ILjava/lang/String;)Z", (void *) isValidServerKey},
         {"native_setCustomServer", "(ILjava/lang/String;I)V", (void *) setCustomServer},
         {"native_clearCustomServer", "(I)V", (void *) clearCustomServer},
         {"native_setServerPublicKey", "(ILjava/lang/String;J)V", (void *) setServerPublicKey},

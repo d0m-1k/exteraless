@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="ServerSettings">Сервер</string>
-    <string name="ServerSettingsInfo">Prod, тест или свой сервер</string>
+    <string name="ServerSettingsInfo">Выберите сервер до входа в аккаунт. После входа его изменить нельзя.</string>
     <string name="ServerProd">Prod</string>
     <string name="ServerTest">Тест</string>
     <string name="ServerCustom">Свой сервер</string>
@@ -19,6 +19,8 @@
     <string name="TransportIntermediate">Intermediate</string>
     <string name="TransportPadded">Padded intermediate</string>
     <string name="ServerTonpx">tonpx.fun</string>
+    <string name="ServerLocal">Локальный сервер</string>
+    <string name="ServerOnlyAtLogin">Сервер можно изменить только до входа в аккаунт. Чтобы переключить, выйдите из аккаунта.</string>
     <string name="PublicKey">Публичный ключ</string>
     <string name="PublicKeyRow">Публичный ключ: %1$s</string>
     <string name="PublicKeyDefault">По умолчанию (Telegram)</string>

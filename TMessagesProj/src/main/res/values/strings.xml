@@ -11685,7 +11685,7 @@
     <string name="FpnvConsentMccMnc">MCC / MNC</string>
     <string name="FpnvConsentPhoneNumber">Phone Number</string>
     <string name="ServerSettings">Server</string>
-    <string name="ServerSettingsInfo">Prod, test or your own server</string>
+    <string name="ServerSettingsInfo">Choose the backend before signing in. It cannot be changed for an authorized account.</string>
     <string name="ServerProd">Prod</string>
     <string name="ServerTest">Test</string>
     <string name="ServerCustom">Custom server</string>
@@ -11703,6 +11703,8 @@
     <string name="TransportIntermediate">Intermediate</string>
     <string name="TransportPadded">Padded intermediate</string>
     <string name="ServerTonpx">tonpx.fun</string>
+    <string name="ServerLocal">Local server</string>
+    <string name="ServerOnlyAtLogin">The server can only be changed before signing in. Sign out of this account to switch.</string>
     <string name="PublicKey">Public key</string>
     <string name="PublicKeyRow">Public key: %1$s</string>
     <string name="PublicKeyDefault">Default (Telegram)</string>

@@ -813,10 +813,7 @@ public class ConnectionsManager extends BaseController {
 
         pushConnectionEnabled = enablePushConnection;
         native_init(currentAccount, version, layer, apiId, deviceModel, systemVersion, appVersion, langCode, systemLangCode, configPath, logPath, regId, cFingerprint, installer, packageId, timezoneOffset, userId, userPremium, enablePushConnection, ApplicationLoader.isNetworkOnline(), ApplicationLoader.getCurrentNetworkType(), SharedConfig.measureDevicePerformanceClass());
-        ServerConfig.applyTransport(this, currentAccount);
-        if (ServerConfig.getMode(currentAccount) == ServerConfig.MODE_CUSTOM) {
-            ServerConfig.applyCustom(this, currentAccount);
-        }
+        ServerConfig.apply(this, currentAccount);
         checkConnection();
     }
 
@@ -857,8 +854,21 @@ public class ConnectionsManager extends BaseController {
         native_switchBackend(currentAccount, restart);
     }
 
+    public void setTestBackend(boolean test) {
+        native_setTestBackend(currentAccount, test);
+    }
+
     public boolean isTestBackend() {
         return native_isTestBackend(currentAccount) != 0;
+    }
+
+    public boolean hasCustomServer() {
+        return native_hasCustomServer(currentAccount);
+    }
+
+    /** A pinned handshake key must be a complete PEM RSA key of 2048 bits. */
+    public static boolean isValidServerKey(int account, String publicKey) {
+        return native_isValidServerKey(account, publicKey == null ? "" : publicKey);
     }
 
     public void setCustomServer(String address, int port) {
@@ -1178,7 +1188,10 @@ public class ConnectionsManager extends BaseController {
     }
 
     public static native void native_switchBackend(int currentAccount, boolean restart);
+    public static native void native_setTestBackend(int currentAccount, boolean test);
     public static native int native_isTestBackend(int currentAccount);
+    public static native boolean native_hasCustomServer(int currentAccount);
+    public static native boolean native_isValidServerKey(int currentAccount, String publicKey);
     public static native void native_setCustomServer(int currentAccount, String address, int port);
     public static native void native_clearCustomServer(int currentAccount);
     public static native void native_setTransport(int currentAccount, int transport, boolean obfuscated);

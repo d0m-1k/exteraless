@@ -65,6 +65,8 @@ public:
     void setUserId(int64_t userId);
     void setUserPremium(bool premium);
     void switchBackend(bool restart);
+    void setTestBackend(bool value);
+    bool hasCustomServer();
     void setCustomServer(std::string address, uint32_t port);
     void clearCustomServer();
     void setTransport(int32_t transport, bool obfuscated);
@@ -173,6 +175,7 @@ private:
     bool testBackend = false;
     std::string customServerAddress;
     uint32_t customServerPort = 0;
+    std::atomic<bool> customServerActive{false};
     std::mutex serverPublicKeyMutex;
     std::string serverPublicKey;
     int64_t serverPublicKeyFingerprint = 0;

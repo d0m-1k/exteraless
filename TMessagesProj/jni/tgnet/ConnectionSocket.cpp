@@ -574,28 +574,6 @@ void ConnectionSocket::openConnection(std::string address, uint16_t port, std::s
         }
     } else {
         proxyAuthState = 0;
-        if ((socketFd = socket(ipv6 ? AF_INET6 : AF_INET, SOCK_STREAM, 0)) < 0) {
-            if (LOGS_ENABLED) DEBUG_E("connection(%p) can't create socket", this);
-            closeSocket(1, -1);
-            return;
-        }
-        if (ipv6) {
-            socketAddress6.sin6_family = AF_INET6;
-            socketAddress6.sin6_port = htons(port);
-            if (inet_pton(AF_INET6, address.c_str(), &socketAddress6.sin6_addr.s6_addr) != 1) {
-                if (LOGS_ENABLED) DEBUG_E("connection(%p) bad ipv6 %s", this, address.c_str());
-                closeSocket(1, -1);
-                return;
-            }
-        } else {
-            socketAddress.sin_family = AF_INET;
-            socketAddress.sin_port = htons(port);
-            if (inet_pton(AF_INET, address.c_str(), &socketAddress.sin_addr.s_addr) != 1) {
-                if (LOGS_ENABLED) DEBUG_E("connection(%p) bad ipv4 %s", this, address.c_str());
-                closeSocket(1, -1);
-                return;
-            }
-        }
         uint32_t tempBuffLength;
         if (secret.size() > 17 && secret[0] == '\xee') {
             proxyAuthState = 10;
@@ -613,6 +591,46 @@ void ConnectionSocket::openConnection(std::string address, uint16_t port, std::s
                 }
                 tempBuffer = new ByteArray(tempBuffLength);
             }
+        }
+        socketAddress.sin_family = AF_INET;
+        socketAddress.sin_port = htons(port);
+        socketAddress6.sin6_family = AF_INET6;
+        socketAddress6.sin6_port = htons(port);
+        // A custom server may be given as a host name. Resolve it through the same delegate the
+        // proxy path uses instead of failing on inet_pton; the socket is created after the answer.
+        if (inet_pton(AF_INET, address.c_str(), &socketAddress.sin_addr.s_addr) == 1) {
+            ipv6 = false;
+        } else if (inet_pton(AF_INET6, address.c_str(), &socketAddress6.sin6_addr.s6_addr) == 1) {
+            ipv6 = true;
+        } else {
+#ifdef USE_DELEGATE_HOST_RESOLVE
+            waitingForHostResolve = address;
+            isIpv6 = ipv6;
+            ConnectionsManager::getInstance(instanceNum).delegate->getHostByName(address, instanceNum, this);
+            return;
+#else
+            struct hostent *he;
+            if ((he = gethostbyname(address.c_str())) == nullptr) {
+                if (LOGS_ENABLED) DEBUG_E("connection(%p) can't resolve host %s address", this, address.c_str());
+                closeSocket(1, -1);
+                return;
+            }
+            struct in_addr **addr_list = (struct in_addr **) he->h_addr_list;
+            if (addr_list[0] == nullptr) {
+                if (LOGS_ENABLED) DEBUG_E("connection(%p) can't resolve host %s address", this, address.c_str());
+                closeSocket(1, -1);
+                return;
+            }
+            socketAddress.sin_addr.s_addr = addr_list[0]->s_addr;
+            ipv6 = false;
+            if (LOGS_ENABLED) DEBUG_D("connection(%p) resolved host %s address %x", this, address.c_str(), addr_list[0]->s_addr);
+#endif
+        }
+        isIpv6 = ipv6;
+        if ((socketFd = socket(ipv6 ? AF_INET6 : AF_INET, SOCK_STREAM, 0)) < 0) {
+            if (LOGS_ENABLED) DEBUG_E("connection(%p) can't create socket", this);
+            closeSocket(1, -1);
+            return;
         }
     }
 
@@ -1181,6 +1199,15 @@ void ConnectionSocket::onHostNameResolved(std::string host, std::string ip, bool
                 }
                 socketAddress6.sin6_port = htons(ConnectionsManager::getInstance(instanceNum).proxyPort);
                 socketAddress6.sin6_family = AF_INET6;
+            } else if (socketFd < 0) {
+                // A direct connection resolved from a host name: the socket is created only now,
+                // once the address family is known.
+                isIpv6 = ipv6;
+                if ((socketFd = socket(ipv6 ? AF_INET6 : AF_INET, SOCK_STREAM, 0)) < 0) {
+                    if (LOGS_ENABLED) DEBUG_E("connection(%p) can't create socket for resolved host %s", this, host.c_str());
+                    closeSocket(1, -1);
+                    return;
+                }
             }
             openConnectionInternal(ipv6);
         }

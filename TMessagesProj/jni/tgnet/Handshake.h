@@ -10,6 +10,7 @@
 #define HANDSHAKE_H
 
 #include <stdint.h>
+#include <string>
 #include "Defines.h"
 #include <openssl/bn.h>
 
@@ -39,6 +40,8 @@ public:
     int64_t getPendingAuthKeyId();
     TLObject *getCurrentHandshakeRequest();
     static bool isGoodPrime(BIGNUM *p, uint32_t g);
+    /** True for a complete PEM RSA public key whose modulus is 2048 bits. */
+    static bool isValidServerKey(const std::string &key);
 
 private:
 

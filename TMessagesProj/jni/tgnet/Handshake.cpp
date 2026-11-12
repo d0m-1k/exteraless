@@ -373,6 +373,20 @@ static int64_t computeServerPublicKeyFingerprint(RSA *rsaKey) {
     return (int64_t) fingerprint;
 }
 
+bool Handshake::isValidServerKey(const std::string &key) {
+    if (key.empty()) {
+        return false;
+    }
+    RSA *rsaKey = readServerPublicKey(key);
+    if (rsaKey == nullptr) {
+        return false;
+    }
+    // The handshake buffer is sized for a 2048-bit modulus.
+    bool valid = RSA_size(rsaKey) == 256;
+    RSA_free(rsaKey);
+    return valid;
+}
+
 void Handshake::cleanupServerKeys() {
     serverPublicKeys.clear();
     serverPublicKeysFingerprints.clear();
@@ -420,27 +434,32 @@ void Handshake::processHandshakeResponse_resPQ(TLObject *message, int64_t messag
             // server advertises are ignored, because they may not be known to the client.
             std::string customKey = ConnectionsManager::getInstance(currentDatacenter->instanceNum).getServerPublicKey();
             if (!customKey.empty()) {
-                int64_t fingerprint = ConnectionsManager::getInstance(currentDatacenter->instanceNum).getServerPublicKeyFingerprint();
-                if (fingerprint == 0) {
-                    RSA *customRsaKey = readServerPublicKey(customKey);
+                RSA *customRsaKey = readServerPublicKey(customKey);
+                if (customRsaKey == nullptr || RSA_size(customRsaKey) != 256) {
+                    if (LOGS_ENABLED) DEBUG_E("account%u dc%u handshake: invalid pinned public key, ignoring it", currentDatacenter->instanceNum, currentDatacenter->datacenterId);
                     if (customRsaKey != nullptr) {
-                        fingerprint = computeServerPublicKeyFingerprint(customRsaKey);
                         RSA_free(customRsaKey);
                     }
-                }
-                if (fingerprint != 0) {
-                    bool advertised = false;
-                    for (uint32_t a = 0; a < count1; a++) {
-                        if ((uint64_t) result->server_public_key_fingerprints[a] == (uint64_t) fingerprint) {
-                            advertised = true;
-                            break;
+                } else {
+                    int64_t fingerprint = ConnectionsManager::getInstance(currentDatacenter->instanceNum).getServerPublicKeyFingerprint();
+                    if (fingerprint == 0) {
+                        fingerprint = computeServerPublicKeyFingerprint(customRsaKey);
+                    }
+                    RSA_free(customRsaKey);
+                    if (fingerprint != 0) {
+                        bool advertised = false;
+                        for (uint32_t a = 0; a < count1; a++) {
+                            if ((uint64_t) result->server_public_key_fingerprints[a] == (uint64_t) fingerprint) {
+                                advertised = true;
+                                break;
+                            }
                         }
+                        if (!advertised && LOGS_ENABLED) {
+                            DEBUG_W("account%u dc%u handshake: pinned public key fingerprint %llx is not advertised by the server", currentDatacenter->instanceNum, currentDatacenter->datacenterId, (unsigned long long) fingerprint);
+                        }
+                        key = customKey;
+                        keyFingerprint = fingerprint;
                     }
-                    if (!advertised && LOGS_ENABLED) {
-                        DEBUG_W("account%u dc%u handshake: pinned public key fingerprint %llx is not advertised by the server", currentDatacenter->instanceNum, currentDatacenter->datacenterId, (unsigned long long) fingerprint);
-                    }
-                    key = customKey;
-                    keyFingerprint = fingerprint;
                 }
             }
             if (keyFingerprint == 0) {
@@ -595,6 +614,15 @@ void Handshake::processHandshakeResponse_resPQ(TLObject *message, int64_t messag
         delete innerData;
 
         RSA *rsaKey = readServerPublicKey(key);
+        if (rsaKey == nullptr || RSA_size(rsaKey) != 256) {
+            if (LOGS_ENABLED) DEBUG_E("account%u dc%u handshake: invalid server public key (must be 2048 bit), type = %d", currentDatacenter->instanceNum, currentDatacenter->datacenterId, handshakeType);
+            if (rsaKey != nullptr) {
+                RSA_free(rsaKey);
+            }
+            innerDataBuffer->reuse();
+            beginHandshake(false);
+            return;
+        }
 
         while (true) {
             RAND_bytes(innerDataBuffer->bytes() + encryptedDataSize + innerDataSize, additionalSize);

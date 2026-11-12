@@ -398,6 +398,7 @@ void ConnectionsManager::loadConfig() {
             if (version >= 6) {
                 customServerAddress = buffer->readString(nullptr);
                 customServerPort = buffer->readUint32(nullptr);
+                customServerActive.store(!customServerAddress.empty() && customServerPort != 0);
             }
             if (buffer->readBool(nullptr)) {
                 currentDatacenterId = buffer->readUint32(nullptr);
@@ -616,6 +617,10 @@ int64_t ConnectionsManager::getCurrentAuthKeyId() {
 
 bool ConnectionsManager::isTestBackend() {
     return testBackend;
+}
+
+bool ConnectionsManager::hasCustomServer() {
+    return customServerActive.load();
 }
 
 int32_t ConnectionsManager::getTimeDifference() {
@@ -2102,6 +2107,7 @@ void ConnectionsManager::switchBackend(bool restart) {
         testBackend = !testBackend;
         customServerAddress.clear();
         customServerPort = 0;
+        customServerActive.store(false);
         if (!restart) {
             Handshake::cleanupServerKeys();
         }
@@ -2111,6 +2117,23 @@ void ConnectionsManager::switchBackend(bool restart) {
         if (restart) {
             exit(1);
         }
+    });
+}
+
+void ConnectionsManager::setTestBackend(bool value) {
+    scheduleTask([&, value] {
+        if (testBackend == value) {
+            return;
+        }
+        currentDatacenterId = 1;
+        testBackend = value;
+        customServerAddress.clear();
+        customServerPort = 0;
+        customServerActive.store(false);
+        Handshake::cleanupServerKeys();
+        datacenters.clear();
+        initDatacenters();
+        saveConfig();
     });
 }
 
@@ -3629,6 +3652,10 @@ void ConnectionsManager::authorizedOnMovingDatacenter() {
 
 void ConnectionsManager::applyDatacenterAddress(uint32_t datacenterId, std::string ipAddress, uint32_t port) {
     scheduleTask([&, datacenterId, ipAddress, port] {
+        if (customServerActive.load()) {
+            if (LOGS_ENABLED) DEBUG_D("ignore dc%d address %s, custom server is set", datacenterId, ipAddress.c_str());
+            return;
+        }
         Datacenter *datacenter = getDatacenterWithId(datacenterId);
         if (datacenter != nullptr) {
             std::vector<TcpAddress> addresses;
@@ -3684,6 +3711,7 @@ void ConnectionsManager::setCustomServer(std::string address, uint32_t port) {
         }
         customServerAddress = address;
         customServerPort = port;
+        customServerActive.store(!customServerAddress.empty() && customServerPort != 0);
         applyCustomServerAddresses();
     });
 }
@@ -3748,6 +3776,7 @@ void ConnectionsManager::clearCustomServer() {
         }
         customServerAddress.clear();
         customServerPort = 0;
+        customServerActive.store(false);
         // Restore the hardcoded addresses; the keys were dropped above because they belonged to
         // the custom backend.
         for (uint32_t dcId = 1; dcId <= 5; dcId++) {
@@ -3790,6 +3819,8 @@ void ConnectionsManager::applyCustomServerAddresses() {
         datacenter->replaceAddresses(emptyAddresses, 1);
         datacenter->replaceAddresses(emptyAddresses, 2);
         datacenter->replaceAddresses(emptyAddresses, 3);
+        // A DNS config downloaded for the official backend must not redirect custom traffic.
+        datacenter->replaceAddresses(emptyAddresses, TcpAddressFlagTemp);
         datacenter->resetAddressAndPortNum();
         if (datacenter->isHandshakingAny()) {
             datacenter->beginHandshake(HandshakeTypeCurrent, true);
@@ -3856,40 +3887,44 @@ void ConnectionsManager::applyDnsConfig(NativeByteBuffer *buffer, std::string ph
                 timeDifference += (realDate - currentDate);
                 requestingSecondAddressByTlsHashMismatch = false;
             }
-            for (auto & iter : config->rules) {
-                TL_accessPointRule *rule = iter.get();
-                if (!checkPhoneByPrefixesRules(phone, rule->phone_prefix_rules)) {
-                    continue;
-                }
-                Datacenter *datacenter = getDatacenterWithId(rule->dc_id);
-                if (datacenter != nullptr) {
-                    std::vector<TcpAddress> addresses;
-                    for (auto iter2 = rule->ips.begin(); iter2 != rule->ips.end(); iter2++) {
-                        IpPort *port = iter2->get();
-                        const std::type_info &typeInfo = typeid(*port);
-                        if (typeInfo == typeid(TL_ipPort)) {
-                            auto ipPort = (TL_ipPort *) port;
-                            addresses.emplace_back(ipPort->ipv4, ipPort->port, 0, "");
-                            if (LOGS_ENABLED) DEBUG_D("got address %s and port %d for dc%d", ipPort->ipv4.c_str(), ipPort->port, rule->dc_id);
-                        } else if (typeInfo == typeid(TL_ipPortSecret)) {
-                            auto ipPort = (TL_ipPortSecret *) port;
-                            addresses.emplace_back(ipPort->ipv4, ipPort->port, 0, std::string((const char *) ipPort->secret->bytes, ipPort->secret->length));
-                            if (LOGS_ENABLED) DEBUG_D("got address %s and port %d for dc%d with secret", ipPort->ipv4.c_str(), ipPort->port, rule->dc_id);
-                        }
+            if (customServerActive.load()) {
+                if (LOGS_ENABLED) DEBUG_D("ignore dns config, custom server is set");
+            } else {
+                for (auto & iter : config->rules) {
+                    TL_accessPointRule *rule = iter.get();
+                    if (!checkPhoneByPrefixesRules(phone, rule->phone_prefix_rules)) {
+                        continue;
                     }
-                    if (!addresses.empty()) {
-                        datacenter->replaceAddresses(addresses, TcpAddressFlagTemp);
-                        Connection *connection = datacenter->getTempConnection(false);
-                        if (connection != nullptr) {
-                            connection->suspendConnection();
+                    Datacenter *datacenter = getDatacenterWithId(rule->dc_id);
+                    if (datacenter != nullptr) {
+                        std::vector<TcpAddress> addresses;
+                        for (auto iter2 = rule->ips.begin(); iter2 != rule->ips.end(); iter2++) {
+                            IpPort *port = iter2->get();
+                            const std::type_info &typeInfo = typeid(*port);
+                            if (typeInfo == typeid(TL_ipPort)) {
+                                auto ipPort = (TL_ipPort *) port;
+                                addresses.emplace_back(ipPort->ipv4, ipPort->port, 0, "");
+                                if (LOGS_ENABLED) DEBUG_D("got address %s and port %d for dc%d", ipPort->ipv4.c_str(), ipPort->port, rule->dc_id);
+                            } else if (typeInfo == typeid(TL_ipPortSecret)) {
+                                auto ipPort = (TL_ipPortSecret *) port;
+                                addresses.emplace_back(ipPort->ipv4, ipPort->port, 0, std::string((const char *) ipPort->secret->bytes, ipPort->secret->length));
+                                if (LOGS_ENABLED) DEBUG_D("got address %s and port %d for dc%d with secret", ipPort->ipv4.c_str(), ipPort->port, rule->dc_id);
+                            }
                         }
-                        if (datacenter->isHandshakingAny()) {
-                            datacenter->beginHandshake(HandshakeTypeCurrent, true);
+                        if (!addresses.empty()) {
+                            datacenter->replaceAddresses(addresses, TcpAddressFlagTemp);
+                            Connection *connection = datacenter->getTempConnection(false);
+                            if (connection != nullptr) {
+                                connection->suspendConnection();
+                            }
+                            if (datacenter->isHandshakingAny()) {
+                                datacenter->beginHandshake(HandshakeTypeCurrent, true);
+                            }
+                            updateDcSettings(rule->dc_id, true, false);
                         }
-                        updateDcSettings(rule->dc_id, true, false);
+                    } else {
+                        if (LOGS_ENABLED) DEBUG_D("config datacenter %d not found", rule->dc_id);
                     }
-                } else {
-                    if (LOGS_ENABLED) DEBUG_D("config datacenter %d not found", rule->dc_id);
                 }
             }
             delete config;

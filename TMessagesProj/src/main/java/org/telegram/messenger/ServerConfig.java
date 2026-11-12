@@ -7,13 +7,12 @@ import android.text.TextUtils;
 import org.telegram.tgnet.ConnectionsManager;
 
 /**
- * Per-account choice of the Telegram backend: production DCs, the test DCs, or a custom server.
+ * Per-account choice of the Telegram backend: the production DCs, the test DCs, or one of the
+ * ready-made custom servers.
  *
- * The choice is keyed by the account slot and survives logout, so the same slot can be pointed at
- * another server before signing in again. Auth keys are issued per backend and are not tied to a
- * host, so any switch between production, test and custom servers — including a different custom
- * host or handshake key — invalidates the current authorization. The UI signs the account out
- * first and lets {@link #consumePending()} replay the choice on the login screen.
+ * The choice belongs to the account slot and is only meant to be made before signing in. Auth keys
+ * are issued per backend and are not tied to a host, so switching between servers invalidates the
+ * current authorization; the UI therefore refuses to change the server of an activated account.
  */
 public final class ServerConfig {
 
@@ -21,10 +20,9 @@ public final class ServerConfig {
     public static final int MODE_TEST = 1;
     public static final int MODE_CUSTOM = 2;
 
-    /** Ready-made custom backend: host, port and the RSA key it uses for the MTProto handshake. */
+    /** Ready-made custom backends: host, port and the RSA key used for the MTProto handshake. */
     public static final String PRESET_TONPX_HOST = "tonpx.fun";
     public static final int PRESET_TONPX_PORT = 7443;
-    public static final long PRESET_TONPX_FINGERPRINT = 0xc5b80f7207736c16L;
     public static final String PRESET_TONPX_KEY = "-----BEGIN PUBLIC KEY-----\n"
             + "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAhSSDPOcRqGzdhM3tS6Vr\n"
             + "GH+0pKKCVacMCyP3+UDqGZIHYg33aFUZpJP6I8eqOiWxkjCJe8FNrTjw7J9bBQmc\n"
@@ -34,13 +32,19 @@ public final class ServerConfig {
             + "43zuey7rHW6PCUetkBckfWfp5MfqhRWRWQdHS9VXiVMkHmRdX06a0FIF4gF59l1O\n"
             + "yQIDAQAB\n"
             + "-----END PUBLIC KEY-----";
+    /** A zero fingerprint means "compute it from the key" natively. */
+    public static final long PRESET_TONPX_FINGERPRINT = 0;
+
+    public static final String PRESET_LOCAL_HOST = "192.168.0.121";
+    public static final int PRESET_LOCAL_PORT = 1111;
+    public static final String PRESET_LOCAL_KEY = PRESET_TONPX_KEY;
+    public static final long PRESET_LOCAL_FINGERPRINT = 0;
 
     public static final int TRANSPORT_ABRIDGED = 0;
     public static final int TRANSPORT_INTERMEDIATE = 1;
     public static final int TRANSPORT_PADDED = 2;
 
     private static final String PREFS = "exteraless_server";
-    private static final long PENDING_TTL_MS = 10 * 60 * 1000L;
 
     private ServerConfig() {
     }
@@ -103,8 +107,7 @@ public final class ServerConfig {
                     .putLong("publicKeyFingerprint" + account, fingerprint)
                     .apply();
         }
-        ConnectionsManager connectionsManager = ConnectionsManager.getInstance(account);
-        applyPublicKey(connectionsManager, account);
+        applyPublicKey(ConnectionsManager.getInstance(account), account);
         discardGenericConnections(account);
     }
 
@@ -131,19 +134,17 @@ public final class ServerConfig {
     }
 
     public static boolean isTonpxPreset(int account) {
-        return getMode(account) == MODE_CUSTOM
-                && PRESET_TONPX_HOST.equals(getHost(account))
-                && getPort(account) == PRESET_TONPX_PORT
-                && PRESET_TONPX_KEY.equals(getPublicKey(account));
+        return isSameCustom(account, PRESET_TONPX_HOST, PRESET_TONPX_PORT);
+    }
+
+    public static boolean isLocalPreset(int account) {
+        return isSameCustom(account, PRESET_LOCAL_HOST, PRESET_LOCAL_PORT);
     }
 
     public static String getPublicKeyName(int account) {
         String key = getPublicKey(account);
         if (TextUtils.isEmpty(key)) {
             return LocaleController.getString(R.string.PublicKeyDefault);
-        }
-        if (PRESET_TONPX_KEY.equals(key)) {
-            return LocaleController.getString(R.string.ServerTonpx);
         }
         return LocaleController.getString(R.string.PublicKeyCustom);
     }
@@ -181,7 +182,10 @@ public final class ServerConfig {
 
     public static boolean isObfuscated2(int account) {
         SharedPreferences preferences = prefs();
-        return preferences != null && preferences.getBoolean("obfuscated" + account, false);
+        // Official DCs use Obfuscated2 by default, like stock Telegram. Custom servers usually
+        // expect the plain transport unless the user turns the layer on explicitly.
+        boolean defaultValue = getMode(account) != MODE_CUSTOM;
+        return preferences != null && preferences.getBoolean("obfuscated" + account, defaultValue);
     }
 
     public static void setObfuscated2(int account, boolean obfuscated) {
@@ -221,27 +225,38 @@ public final class ServerConfig {
 
     /** Applies the stored choice to the native connection of the given account. */
     public static void apply(int account) {
-        SharedPreferences preferences = prefs();
-        ConnectionsManager connectionsManager = ConnectionsManager.getInstance(account);
-        final int mode = getMode(account);
+        apply(ConnectionsManager.getInstance(account), account);
+    }
+
+    /**
+     * Applies the stored choice to an already created native manager. Used from
+     * {@link ConnectionsManager#init} so calling {@link ConnectionsManager#getInstance} there
+     * cannot recurse.
+     */
+    public static void apply(ConnectionsManager connectionsManager, int account) {
         applyTransport(connectionsManager, account);
+
+        final int mode = getMode(account);
         final boolean wantTest = mode == MODE_TEST;
-        boolean wasCustom = preferences != null && preferences.getBoolean("custom" + account, false);
         if (connectionsManager.isTestBackend() != wantTest) {
-            connectionsManager.switchBackend(false);
-            wasCustom = false;
+            connectionsManager.setTestBackend(wantTest);
         }
+
         if (mode == MODE_CUSTOM) {
-            applyCustom(connectionsManager, account);
-            if (preferences != null) {
-                preferences.edit().putBoolean("custom" + account, true).apply();
+            String host = getHost(account);
+            int port = getPort(account);
+            if (!TextUtils.isEmpty(host) && port > 0 && port <= 65535) {
+                connectionsManager.setCustomServer(host, port);
+                applyPublicKey(connectionsManager, account);
+            } else {
+                if (connectionsManager.hasCustomServer()) {
+                    connectionsManager.clearCustomServer();
+                }
+                connectionsManager.setServerPublicKey("", 0);
             }
         } else {
-            if (wasCustom) {
+            if (connectionsManager.hasCustomServer()) {
                 connectionsManager.clearCustomServer();
-                if (preferences != null) {
-                    preferences.edit().putBoolean("custom" + account, false).apply();
-                }
             }
             connectionsManager.setServerPublicKey("", 0);
         }
@@ -260,30 +275,5 @@ public final class ServerConfig {
         }
         connectionsManager.setCustomServer(host, port);
         applyPublicKey(connectionsManager, account);
-    }
-
-    public static void setPending(int mode) {
-        SharedPreferences preferences = prefs();
-        if (preferences != null) {
-            preferences.edit()
-                    .putInt("pendingMode", mode)
-                    .putLong("pendingTime", System.currentTimeMillis())
-                    .apply();
-        }
-    }
-
-    /** Returns the backend chosen right before logout, or -1 when there is nothing fresh to apply. */
-    public static int consumePending() {
-        SharedPreferences preferences = prefs();
-        if (preferences == null) {
-            return -1;
-        }
-        long time = preferences.getLong("pendingTime", 0);
-        int mode = preferences.getInt("pendingMode", -1);
-        preferences.edit().remove("pendingMode").remove("pendingTime").apply();
-        if (mode < 0 || System.currentTimeMillis() - time > PENDING_TTL_MS) {
-            return -1;
-        }
-        return mode;
     }
 }

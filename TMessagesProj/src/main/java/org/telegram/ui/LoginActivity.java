@@ -573,10 +573,6 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         getNotificationCenter().addWeakObserver(this, NotificationCenter.didUpdateConnectionState);
         getNotificationCenter().addWeakObserver(this, NotificationCenter.newSuggestionsAvailable);
         if (activityMode == MODE_LOGIN) {
-            int pendingServerMode = ServerConfig.consumePending();
-            if (pendingServerMode >= 0) {
-                ServerConfig.setMode(currentAccount, pendingServerMode);
-            }
             ServerConfig.apply(currentAccount);
         }
         return super.onFragmentCreate();
@@ -8823,7 +8819,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 getNotificationCenter().addObserver(this, NotificationCenter.updateLoginToken);
                 boolean testBackend = getConnectionsManager().isTestBackend();
                 if (testBackend != LoginActivity.this.testBackend) {
-                    getConnectionsManager().switchBackend(false);
+                    getConnectionsManager().setTestBackend(LoginActivity.this.testBackend);
                 }
                 getConnectionsManager().cleanup(false);
             }

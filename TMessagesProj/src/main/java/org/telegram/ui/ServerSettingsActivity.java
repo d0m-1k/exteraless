@@ -2,7 +2,6 @@ package org.telegram.ui;
 
 import static org.telegram.messenger.LocaleController.getString;
 
-import android.text.TextUtils;
 import android.view.View;
 
 import org.telegram.messenger.R;
@@ -14,15 +13,15 @@ import org.telegram.ui.Components.UniversalFragment;
 import java.util.ArrayList;
 
 /**
- * Per-account server menu: production/test/custom backend, MTProto transport and Obfuscated2.
- * Opened both from Settings and from the "add account" screen.
+ * Server menu for an account that is being added: production/test backend or one of the
+ * ready-made custom servers, the MTProto transport and Obfuscated2.
  */
 public class ServerSettingsActivity extends UniversalFragment {
 
     private static final int ID_PROD = 1;
     private static final int ID_TEST = 2;
-    private static final int ID_CUSTOM = 3;
-    private static final int ID_TONPX = 4;
+    private static final int ID_TONPX = 3;
+    private static final int ID_LOCAL = 4;
     private static final int ID_PUBLIC_KEY = 5;
 
     private static final int ID_TRANSPORT_ABRIDGED = 10;
@@ -65,16 +64,21 @@ public class ServerSettingsActivity extends UniversalFragment {
         final int mode = ServerConfig.getMode(currentAccount);
         final int transport = ServerConfig.getTransport(currentAccount);
         final boolean obfuscated = ServerConfig.isObfuscated2(currentAccount);
-        final boolean tonpx = ServerConfig.isTonpxPreset(currentAccount);
 
         items.add(UItem.asHeader(getString(R.string.ServerSettings)));
         items.add(UItem.asRadio(ID_PROD, getString(R.string.ServerProd)).setChecked(mode == ServerConfig.MODE_PROD));
         items.add(UItem.asRadio(ID_TEST, getString(R.string.ServerTest)).setChecked(mode == ServerConfig.MODE_TEST));
-        items.add(UItem.asRadio(ID_TONPX, getString(R.string.ServerTonpx), ServerConfig.PRESET_TONPX_HOST + ":" + ServerConfig.PRESET_TONPX_PORT).setChecked(tonpx));
-        items.add(UItem.asRadio(ID_CUSTOM, getString(R.string.ServerCustom), getCustomAddress()).setChecked(mode == ServerConfig.MODE_CUSTOM && !tonpx));
+        items.add(UItem.asRadio(ID_TONPX, getString(R.string.ServerTonpx),
+                ServerConfig.PRESET_TONPX_HOST + ":" + ServerConfig.PRESET_TONPX_PORT)
+                .setChecked(ServerConfig.isTonpxPreset(currentAccount)));
+        items.add(UItem.asRadio(ID_LOCAL, getString(R.string.ServerLocal),
+                ServerConfig.PRESET_LOCAL_HOST + ":" + ServerConfig.PRESET_LOCAL_PORT)
+                .setChecked(ServerConfig.isLocalPreset(currentAccount)));
         items.add(UItem.asShadow(getString(R.string.ServerSettingsInfo)));
-        items.add(UItem.asButton(ID_PUBLIC_KEY, getString(R.string.PublicKey), ServerConfig.getPublicKeyName(currentAccount)));
-        items.add(UItem.asShadow(getString(R.string.PublicKeyInfo)));
+        if (mode == ServerConfig.MODE_CUSTOM) {
+            items.add(UItem.asButton(ID_PUBLIC_KEY, getString(R.string.PublicKey), ServerConfig.getPublicKeyName(currentAccount)));
+            items.add(UItem.asShadow(getString(R.string.PublicKeyInfo)));
+        }
 
         items.add(UItem.asHeader(getString(R.string.ServerTransport)));
         items.add(UItem.asRadio(ID_TRANSPORT_ABRIDGED, getString(R.string.TransportAbridged)).setChecked(transport == ServerConfig.TRANSPORT_ABRIDGED));
@@ -86,11 +90,6 @@ public class ServerSettingsActivity extends UniversalFragment {
         items.add(UItem.asShadow(getString(R.string.Obfuscated2Info)));
     }
 
-    private String getCustomAddress() {
-        String host = ServerConfig.getHost(currentAccount);
-        return TextUtils.isEmpty(host) ? "" : host + ":" + ServerConfig.getPort(currentAccount);
-    }
-
     @Override
     protected void onClick(UItem item, View view, int position, float x, float y) {
         switch (item.id) {
@@ -100,15 +99,15 @@ public class ServerSettingsActivity extends UniversalFragment {
             case ID_TEST:
                 ServerSettingsDialog.requestMode(this, currentAccount, ServerConfig.MODE_TEST, refresh);
                 break;
-            case ID_CUSTOM:
-                ServerSettingsDialog.showCustom(this, currentAccount, refresh);
-                break;
             case ID_TONPX:
-                if (!ServerConfig.isTonpxPreset(currentAccount)) {
-                    ServerSettingsDialog.applyPreset(this, currentAccount, ServerConfig.PRESET_TONPX_HOST,
-                            ServerConfig.PRESET_TONPX_PORT, ServerConfig.PRESET_TONPX_KEY,
-                            ServerConfig.PRESET_TONPX_FINGERPRINT, refresh);
-                }
+                ServerSettingsDialog.applyPreset(this, currentAccount, ServerConfig.PRESET_TONPX_HOST,
+                        ServerConfig.PRESET_TONPX_PORT, ServerConfig.PRESET_TONPX_KEY,
+                        ServerConfig.PRESET_TONPX_FINGERPRINT, refresh);
+                break;
+            case ID_LOCAL:
+                ServerSettingsDialog.applyPreset(this, currentAccount, ServerConfig.PRESET_LOCAL_HOST,
+                        ServerConfig.PRESET_LOCAL_PORT, ServerConfig.PRESET_LOCAL_KEY,
+                        ServerConfig.PRESET_LOCAL_FINGERPRINT, refresh);
                 break;
             case ID_PUBLIC_KEY:
                 ServerSettingsDialog.showPublicKey(this, currentAccount, refresh);
