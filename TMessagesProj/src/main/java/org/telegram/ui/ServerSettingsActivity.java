@@ -31,6 +31,14 @@ public class ServerSettingsActivity extends UniversalFragment {
 
     private static final int ID_OBFUSCATED2 = 20;
 
+    public ServerSettingsActivity() {
+    }
+
+    /** Opens the screen for the given account, e.g. the slot being added from the login screen. */
+    public ServerSettingsActivity(int account) {
+        setCurrentAccount(account);
+    }
+
     private final Runnable refresh = () -> {
         if (listView != null && listView.adapter != null) {
             listView.adapter.update(true);

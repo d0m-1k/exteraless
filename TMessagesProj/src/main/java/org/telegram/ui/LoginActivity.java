@@ -843,7 +843,8 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     FileLog.e(e);
                 }
             } else if (id == 3) {
-                presentFragment(new ServerSettingsActivity());
+                // The login screen may belong to a slot that is not the selected account yet.
+                presentFragment(new ServerSettingsActivity(currentAccount));
             } else if (id == 4) {
                 PhoneView phoneView = (PhoneView)views[VIEW_PHONE_INPUT];
                 if (phoneView != null) {
