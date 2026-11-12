@@ -39,20 +39,16 @@ public final class ServerSettingsDialog {
         }
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle(LocaleController.getString(R.string.ServerSettings));
+        // Transport and Obfuscated2 have their own rows on the login screen, so this dialog only
+        // picks the backend mode.
         CharSequence[] items = new CharSequence[]{
                 LocaleController.getString(R.string.ServerProd),
                 LocaleController.getString(R.string.ServerTest),
-                LocaleController.getString(R.string.ServerCustom),
-                LocaleController.formatString("TransportRow", R.string.TransportRow, ServerConfig.getTransportName(ServerConfig.getTransport(account))),
-                LocaleController.formatString("Obfuscated2Row", R.string.Obfuscated2Row, LocaleController.getString(ServerConfig.isObfuscated2(account) ? R.string.Obfuscated2On : R.string.Obfuscated2Off))
+                LocaleController.getString(R.string.ServerCustom)
         };
         builder.setItems(items, (dialog, which) -> {
             if (which == 2) {
                 showCustom(fragment, account, onChanged);
-            } else if (which == 3) {
-                showTransport(fragment, account, onChanged);
-            } else if (which == 4) {
-                toggleObfuscated2(fragment, account, onChanged);
             } else {
                 requestMode(fragment, account, which == 1 ? ServerConfig.MODE_TEST : ServerConfig.MODE_PROD, onChanged);
             }
