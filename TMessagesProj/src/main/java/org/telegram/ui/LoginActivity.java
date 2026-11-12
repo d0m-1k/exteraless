@@ -830,7 +830,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         moreButtonView.addSubItem(1, R.drawable.msg_qrcode_solar, getString(R.string.ImportLogin));
         if (BuildVars.SUPPORTS_PASSKEYS) moreButtonView.addSubItem(4, R.drawable.menu_passkey_add, getString(R.string.PasskeyLogin));
         moreButtonView.addSubItem(2, R.drawable.msg_permissions_solar, getString(R.string.CustomApi)).setContentDescription(getString(R.string.CustomApi));
-        moreButtonView.addSubItem(3, R.drawable.msg_retry_solar, getString(R.string.TestBackend));
+        moreButtonView.addSubItem(3, R.drawable.msg_settings_solar, getString(R.string.ServerSettings));
         moreButtonView.setDelegate(id -> {
             if (id == 0) {
                 presentFragment(new ProxyListActivity());
@@ -843,17 +843,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     FileLog.e(e);
                 }
             } else if (id == 3) {
-                PhoneView phoneView = (PhoneView)views[VIEW_PHONE_INPUT];
-                if (phoneView.serverRow != null) {
-                    boolean hide = phoneView.serverRow.getVisibility() != View.GONE;
-                    phoneView.serverRow.setVisibility(hide ? View.GONE : View.VISIBLE);
-                    if (phoneView.transportRow != null) {
-                        phoneView.transportRow.setVisibility(hide ? View.GONE : View.VISIBLE);
-                    }
-                    if (phoneView.obfuscatedRow != null) {
-                        phoneView.obfuscatedRow.setVisibility(hide ? View.GONE : View.VISIBLE);
-                    }
-                }
+                presentFragment(new ServerSettingsActivity());
             } else if (id == 4) {
                 PhoneView phoneView = (PhoneView)views[VIEW_PHONE_INPUT];
                 if (phoneView != null) {
@@ -1017,6 +1007,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
     @Override
     public void onResume() {
         super.onResume();
+        testBackend = ServerConfig.getMode(currentAccount) == ServerConfig.MODE_TEST;
         if (newAccount) {
             ConnectionsManager.getInstance(currentAccount).setAppPaused(false, false);
         }
@@ -2077,9 +2068,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         private ImageView chevronRight;
         private int chevronRightFilterColor, chevronRightSelectorColor;
         private CheckBoxCell syncContactsBox;
-        private TextView serverRow;
-        private TextView transportRow;
-        private CheckBoxCell obfuscatedRow;
+
 
         @CountryState
         private int countryState = COUNTRY_STATE_NOT_SET_OR_VALID;
@@ -2125,19 +2114,8 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 .show();
         }
 
-        private void updateServerRows() {
+        private void syncBackendState() {
             testBackend = ServerConfig.getMode(currentAccount) == ServerConfig.MODE_TEST;
-            if (serverRow != null) {
-                serverRow.setText(LocaleController.formatString("ServerRow", R.string.ServerRow, ServerConfig.getDisplay(currentAccount)));
-            }
-            if (transportRow != null) {
-                transportRow.setText(LocaleController.formatString("TransportRow", R.string.TransportRow, ServerConfig.getTransportName(ServerConfig.getTransport(currentAccount))));
-            }
-            if (obfuscatedRow != null) {
-                boolean obfuscated = ServerConfig.isObfuscated2(currentAccount);
-                obfuscatedRow.setText(LocaleController.getString(R.string.Obfuscated2), "", obfuscated, false);
-                obfuscatedRow.setChecked(obfuscated, false);
-            }
         }
 
         public PhoneView(Context context) {
@@ -2604,53 +2582,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             }
 
             if (activityMode == MODE_LOGIN) {
-                serverRow = new TextView(context);
-                serverRow.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
-                serverRow.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
-                serverRow.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(8), AndroidUtilities.dp(16), AndroidUtilities.dp(8));
-                serverRow.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
-                serverRow.setOnClickListener(v -> {
-                    if (getParentActivity() == null) {
-                        return;
-                    }
-                    ServerSettingsDialog.show(LoginActivity.this, LoginActivity.this.currentAccount, () -> {
-                        updateServerRows();
-                        loadCountries();
-                    });
-                });
-                addView(serverRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-                bottomMargin -= 32;
-
-                transportRow = new TextView(context);
-                transportRow.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
-                transportRow.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
-                transportRow.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(8), AndroidUtilities.dp(16), AndroidUtilities.dp(8));
-                transportRow.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
-                transportRow.setOnClickListener(v -> {
-                    if (getParentActivity() == null) {
-                        return;
-                    }
-                    ServerSettingsDialog.showTransport(LoginActivity.this, LoginActivity.this.currentAccount, this::updateServerRows);
-                });
-                addView(transportRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-                bottomMargin -= 32;
-
-                obfuscatedRow = new CheckBoxCell(context, 2);
-                obfuscatedRow.setText(LocaleController.getString(R.string.Obfuscated2), "", ServerConfig.isObfuscated2(currentAccount), false);
-                obfuscatedRow.setChecked(ServerConfig.isObfuscated2(currentAccount), false);
-                obfuscatedRow.setSquareCheckBoxColor(Theme.key_checkboxSquareUnchecked, Theme.key_checkboxSquareBackground, Theme.key_checkboxSquareCheck);
-                obfuscatedRow.setOnClickListener(v -> {
-                    if (getParentActivity() == null) {
-                        return;
-                    }
-                    boolean obfuscated = !ServerConfig.isObfuscated2(currentAccount);
-                    ServerConfig.setObfuscated2(currentAccount, obfuscated);
-                    updateServerRows();
-                });
-                addView(obfuscatedRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-                bottomMargin -= 32;
-
-                updateServerRows();
+                syncBackendState();
             }
 
             if (bottomMargin > 0 && !AndroidUtilities.isSmallScreen()) {
@@ -2865,16 +2797,6 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             if (syncContactsBox != null) {
                 syncContactsBox.setSquareCheckBoxColor(Theme.key_checkboxSquareUnchecked, Theme.key_checkboxSquareBackground, Theme.key_checkboxSquareCheck);
                 syncContactsBox.updateTextColor();
-            }
-            if (serverRow != null) {
-                serverRow.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
-            }
-            if (transportRow != null) {
-                transportRow.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
-            }
-            if (obfuscatedRow != null) {
-                obfuscatedRow.setSquareCheckBoxColor(Theme.key_checkboxSquareUnchecked, Theme.key_checkboxSquareBackground, Theme.key_checkboxSquareCheck);
-                obfuscatedRow.updateTextColor();
             }
 
             phoneOutlineView.updateColor();
@@ -3228,7 +3150,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     testBackend = true;
                     ServerConfig.setMode(currentAccount, ServerConfig.MODE_TEST);
                     ServerConfig.apply(currentAccount);
-                    updateServerRows();
+                    syncBackendState();
                 }
                 if (getParentActivity() instanceof LaunchActivity) {
                     for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {

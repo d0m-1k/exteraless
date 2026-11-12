@@ -68,11 +68,7 @@ public:
     void setCustomServer(std::string address, uint32_t port);
     void clearCustomServer();
     void setTransport(int32_t transport, bool obfuscated);
-    void setServerPublicKey(std::string key, int64_t fingerprint) {
-        std::lock_guard<std::mutex> lock(serverPublicKeyMutex);
-        serverPublicKey = std::move(key);
-        serverPublicKeyFingerprint = fingerprint;
-    }
+    void setServerPublicKey(std::string key, int64_t fingerprint);
     std::string getServerPublicKey() {
         std::lock_guard<std::mutex> lock(serverPublicKeyMutex);
         return serverPublicKey;
@@ -113,6 +109,8 @@ public:
     void moveToDatacenter(uint32_t datacenterId);
 
 private:
+    /** Drops the MTProto keys of every datacenter together with their salts and sessions. */
+    void resetAuthKeysInternal();
     static void *ThreadProc(void *data);
 
     void initDatacenters();
@@ -163,7 +161,7 @@ private:
     void checkProxyInternal(ProxyCheckInfo *proxyCheckInfo);
 
     int32_t instanceNum = 0;
-    uint32_t configVersion = 5;
+    uint32_t configVersion = 6;
     Config *config = nullptr;
 
     std::list<EventObject *> events;

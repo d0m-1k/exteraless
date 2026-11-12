@@ -28,6 +28,7 @@
     <string name="PublicKeyInvalid">Некорректный публичный ключ</string>
     <string name="PublicKeyApplied">Публичный ключ изменён</string>
     <string name="PublicKeyInfo">Используется для шифрования рукопожатия MTProto. Для официальных серверов оставьте по умолчанию.</string>
+    <string name="NothingChanged">Ничего не изменилось</string>
     <string name="Obfuscated2">Obfuscated2</string>
     <string name="Obfuscated2Info">Obfuscated2 — это слой обфускации поверх транспорта MTProto. Выключите, если ваш сервер ожидает обычный транспорт.</string>
     <string name="Obfuscated2Row">Obfuscated2: %1$s</string>

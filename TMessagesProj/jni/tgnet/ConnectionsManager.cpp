@@ -395,6 +395,10 @@ void ConnectionsManager::loadConfig() {
             if (version >= 4) {
                 lastInitSystemLangcode = buffer->readString(nullptr);
             }
+            if (version >= 6) {
+                customServerAddress = buffer->readString(nullptr);
+                customServerPort = buffer->readUint32(nullptr);
+            }
             if (buffer->readBool(nullptr)) {
                 currentDatacenterId = buffer->readUint32(nullptr);
                 timeDifference = buffer->readInt32(nullptr);
@@ -467,6 +471,8 @@ void ConnectionsManager::saveConfigInternal(NativeByteBuffer *buffer) {
     buffer->writeBool(testBackend);
     buffer->writeBool(clientBlocked);
     buffer->writeString(lastInitSystemLangcode);
+    buffer->writeString(customServerAddress);
+    buffer->writeInt32((int32_t) customServerPort);
     Datacenter *currentDatacenter = getDatacenterWithId(currentDatacenterId);
     buffer->writeBool(currentDatacenter != nullptr);
     if (currentDatacenter != nullptr) {
@@ -3639,8 +3645,43 @@ void ConnectionsManager::applyDatacenterAddress(uint32_t datacenterId, std::stri
     });
 }
 
+void ConnectionsManager::resetAuthKeysInternal() {
+    for (auto & entry : datacenters) {
+        Datacenter *datacenter = entry.second;
+        datacenter->clearAuthKey(HandshakeTypeAll);
+        datacenter->recreateSessions(HandshakeTypeAll);
+        datacenter->authorized = false;
+    }
+    if (LOGS_ENABLED) DEBUG_D("account%u dropped all datacenter auth keys", instanceNum);
+}
+
+void ConnectionsManager::setServerPublicKey(std::string key, int64_t fingerprint) {
+    bool changed;
+    {
+        std::lock_guard<std::mutex> lock(serverPublicKeyMutex);
+        changed = serverPublicKey != key || serverPublicKeyFingerprint != fingerprint;
+        serverPublicKey = std::move(key);
+        serverPublicKeyFingerprint = fingerprint;
+    }
+    // A different handshake key means a different server; the pinned key is only meaningful for a
+    // custom backend, so keys of the official datacenters are left untouched.
+    if (changed) {
+        scheduleTask([&] {
+            if (!customServerAddress.empty()) {
+                resetAuthKeysInternal();
+                saveConfig();
+            }
+        });
+    }
+}
+
 void ConnectionsManager::setCustomServer(std::string address, uint32_t port) {
     scheduleTask([&, address, port] {
+        if (customServerAddress != address || customServerPort != port) {
+            // Auth keys are stored per datacenter and are not tied to a host, so keys negotiated
+            // with the previous backend (including the production one) cannot be used here.
+            resetAuthKeysInternal();
+        }
         customServerAddress = address;
         customServerPort = port;
         applyCustomServerAddresses();
@@ -3701,9 +3742,14 @@ static void getDefaultDatacenterAddresses(uint32_t dcId, bool testBackend, std::
 
 void ConnectionsManager::clearCustomServer() {
     scheduleTask([&] {
+        if (!customServerAddress.empty() || customServerPort != 0) {
+            // The keys in the config belong to the custom backend, not to the official DCs.
+            resetAuthKeysInternal();
+        }
         customServerAddress.clear();
         customServerPort = 0;
-        // Restore the hardcoded addresses without dropping the datacenter auth keys.
+        // Restore the hardcoded addresses; the keys were dropped above because they belonged to
+        // the custom backend.
         for (uint32_t dcId = 1; dcId <= 5; dcId++) {
             Datacenter *datacenter = getDatacenterWithId(dcId);
             if (datacenter == nullptr) {

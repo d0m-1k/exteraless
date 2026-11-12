@@ -29,85 +29,6 @@ public final class ServerSettingsDialog {
     private ServerSettingsDialog() {
     }
 
-    public static void show(BaseFragment fragment, int account) {
-        show(fragment, account, null);
-    }
-
-    public static void show(BaseFragment fragment, int account, Runnable onChanged) {
-        Context context = fragment.getParentActivity();
-        if (context == null) {
-            return;
-        }
-        AlertDialog.Builder builder = new AlertDialog.Builder(context);
-        builder.setTitle(LocaleController.getString(R.string.ServerSettings));
-        // Transport and Obfuscated2 have their own rows on the login screen, so this dialog only
-        // picks the backend mode and its handshake key.
-        CharSequence[] items = new CharSequence[]{
-                LocaleController.getString(R.string.ServerProd),
-                LocaleController.getString(R.string.ServerTest),
-                LocaleController.getString(R.string.ServerTonpx),
-                LocaleController.getString(R.string.ServerCustom),
-                LocaleController.formatString("PublicKeyRow", R.string.PublicKeyRow, ServerConfig.getPublicKeyName(account))
-        };
-        builder.setItems(items, (dialog, which) -> {
-            if (which == 2) {
-                applyPreset(fragment, account, ServerConfig.PRESET_TONPX_HOST, ServerConfig.PRESET_TONPX_PORT,
-                        ServerConfig.PRESET_TONPX_KEY, ServerConfig.PRESET_TONPX_FINGERPRINT, onChanged);
-            } else if (which == 3) {
-                showCustom(fragment, account, onChanged);
-            } else if (which == 4) {
-                showPublicKey(fragment, account, onChanged);
-            } else {
-                requestMode(fragment, account, which == 1 ? ServerConfig.MODE_TEST : ServerConfig.MODE_PROD, onChanged);
-            }
-        });
-        fragment.showDialog(builder.create());
-    }
-
-    /** Transport picker shared by the login screen and Settings. */
-    public static void showTransport(BaseFragment fragment, int account, Runnable onChanged) {
-        Context context = fragment.getParentActivity();
-        if (context == null) {
-            return;
-        }
-        int current = ServerConfig.getTransport(account);
-        CharSequence[] items = new CharSequence[]{
-                transportItem(ServerConfig.TRANSPORT_ABRIDGED, current),
-                transportItem(ServerConfig.TRANSPORT_INTERMEDIATE, current),
-                transportItem(ServerConfig.TRANSPORT_PADDED, current)
-        };
-        AlertDialog.Builder builder = new AlertDialog.Builder(context);
-        builder.setTitle(LocaleController.getString(R.string.ServerTransport));
-        builder.setItems(items, (dialog, which) -> {
-            if (which == current) {
-                return;
-            }
-            ServerConfig.setTransport(account, which);
-            if (onChanged != null) {
-                onChanged.run();
-            }
-            BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.ServerApplied)).show();
-        });
-        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
-        fragment.showDialog(builder.create());
-    }
-
-    public static void toggleObfuscated2(BaseFragment fragment, int account, Runnable onChanged) {
-        boolean obfuscated = !ServerConfig.isObfuscated2(account);
-        ServerConfig.setObfuscated2(account, obfuscated);
-        if (onChanged != null) {
-            onChanged.run();
-        }
-        BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip,
-                LocaleController.formatString("Obfuscated2Row", R.string.Obfuscated2Row,
-                        LocaleController.getString(obfuscated ? R.string.Obfuscated2On : R.string.Obfuscated2Off))).show();
-    }
-
-    private static CharSequence transportItem(int transport, int current) {
-        String name = ServerConfig.getTransportName(transport);
-        return transport == current ? name + "  ✓" : name;
-    }
-
     private static boolean isCurrent(int account, int mode) {
         if (ServerConfig.getMode(account) != mode) {
             return false;
@@ -128,13 +49,10 @@ public final class ServerSettingsDialog {
             BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.ServerAlready)).show();
             return;
         }
-        boolean activated = UserConfig.getInstance(account).isClientActivated();
-        ConnectionsManager connectionsManager = ConnectionsManager.getInstance(account);
-        boolean customNow = ServerConfig.getMode(account) == ServerConfig.MODE_CUSTOM;
-        // Going back from a custom server to production keeps the existing prod auth key, no relogin needed.
-        boolean keepSession = mode == ServerConfig.MODE_PROD && !connectionsManager.isTestBackend() && customNow;
-        if (activated && !keepSession) {
-            confirmLogout(fragment, account, mode, onChanged);
+        // Auth keys are bound to a datacenter and to the backend that issued them, so any switch
+        // to another backend invalidates the current session.
+        if (UserConfig.getInstance(account).isClientActivated()) {
+            confirmLogout(fragment, account, mode, null, onChanged);
         } else {
             ServerConfig.setMode(account, mode);
             ServerConfig.apply(account);
@@ -145,7 +63,7 @@ public final class ServerSettingsDialog {
         }
     }
 
-    private static void confirmLogout(BaseFragment fragment, int account, int mode, Runnable onChanged) {
+    private static void confirmLogout(BaseFragment fragment, int account, int mode, Runnable applyBeforeLogout, Runnable onChanged) {
         Context context = fragment.getParentActivity();
         if (context == null) {
             return;
@@ -154,6 +72,9 @@ public final class ServerSettingsDialog {
         builder.setTitle(LocaleController.getString(R.string.ServerSettings));
         builder.setMessage(LocaleController.getString(R.string.ServerChangeLogout));
         builder.setPositiveButton(LocaleController.getString(R.string.LogOut), (dialog, which) -> {
+            if (applyBeforeLogout != null) {
+                applyBeforeLogout.run();
+            }
             ServerConfig.setPending(mode);
             ServerConfig.setMode(account, mode);
             if (onChanged != null) {
@@ -171,14 +92,19 @@ public final class ServerSettingsDialog {
         if (context == null) {
             return;
         }
-        ServerConfig.setCustom(account, host, port);
-        ServerConfig.setPublicKey(account, publicKey, fingerprint);
-        boolean activated = UserConfig.getInstance(account).isClientActivated();
-        ConnectionsManager connectionsManager = ConnectionsManager.getInstance(account);
-        if (activated && connectionsManager.isTestBackend()) {
-            // The test auth key is not valid on a production-based custom server.
-            confirmLogout(fragment, account, ServerConfig.MODE_CUSTOM, onChanged);
+        if (ServerConfig.isSameCustom(account, host, port) && ServerConfig.isSamePublicKey(account, publicKey, fingerprint)) {
+            BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.ServerAlready)).show();
+            return;
+        }
+        Runnable apply = () -> {
+            ServerConfig.setCustom(account, host, port);
+            ServerConfig.setPublicKey(account, publicKey, fingerprint);
+        };
+        if (UserConfig.getInstance(account).isClientActivated()) {
+            // The auth key issued by the previous backend is not valid on this server.
+            confirmLogout(fragment, account, ServerConfig.MODE_CUSTOM, apply, onChanged);
         } else {
+            apply.run();
             ServerConfig.setMode(account, ServerConfig.MODE_CUSTOM);
             ServerConfig.apply(account);
             if (onChanged != null) {
@@ -203,17 +129,9 @@ public final class ServerSettingsDialog {
         builder.setTitle(LocaleController.formatString("PublicKeyRow", R.string.PublicKeyRow, ServerConfig.getPublicKeyName(account)));
         builder.setItems(items, (dialog, which) -> {
             if (which == 0) {
-                ServerConfig.setPublicKey(account, "", 0);
-                if (onChanged != null) {
-                    onChanged.run();
-                }
-                BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.PublicKeyApplied)).show();
+                applyPublicKeyChange(fragment, account, "", 0, onChanged);
             } else if (which == 1) {
-                ServerConfig.setPublicKey(account, ServerConfig.PRESET_TONPX_KEY, ServerConfig.PRESET_TONPX_FINGERPRINT);
-                if (onChanged != null) {
-                    onChanged.run();
-                }
-                BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.PublicKeyApplied)).show();
+                applyPublicKeyChange(fragment, account, ServerConfig.PRESET_TONPX_KEY, ServerConfig.PRESET_TONPX_FINGERPRINT, onChanged);
             } else {
                 showPublicKeyInput(fragment, account, onChanged);
             }
@@ -250,14 +168,29 @@ public final class ServerSettingsDialog {
                 return;
             }
             // Fingerprint is computed natively from the key for keys pasted by the user.
-            ServerConfig.setPublicKey(account, publicKey, 0);
+            applyPublicKeyChange(fragment, account, publicKey, 0, onChanged);
+        });
+        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
+        fragment.showDialog(builder.create());
+    }
+
+    private static void applyPublicKeyChange(BaseFragment fragment, int account, String publicKey, long fingerprint, Runnable onChanged) {
+        if (ServerConfig.isSamePublicKey(account, publicKey, fingerprint)) {
+            BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.NothingChanged)).show();
+            return;
+        }
+        Runnable apply = () -> ServerConfig.setPublicKey(account, publicKey, fingerprint);
+        boolean custom = ServerConfig.getMode(account) == ServerConfig.MODE_CUSTOM;
+        if (custom && UserConfig.getInstance(account).isClientActivated()) {
+            // A new handshake key means a new backend, so the old auth key cannot be reused.
+            confirmLogout(fragment, account, ServerConfig.MODE_CUSTOM, apply, onChanged);
+        } else {
+            apply.run();
             if (onChanged != null) {
                 onChanged.run();
             }
             BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.PublicKeyApplied)).show();
-        });
-        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
-        fragment.showDialog(builder.create());
+        }
     }
 
     public static void showCustom(BaseFragment fragment, int account, Runnable onChanged) {
@@ -304,13 +237,16 @@ public final class ServerSettingsDialog {
                 BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.ServerInvalid)).show();
                 return;
             }
-            ServerConfig.setCustom(account, host, port);
-            boolean activated = UserConfig.getInstance(account).isClientActivated();
-            ConnectionsManager connectionsManager = ConnectionsManager.getInstance(account);
-            if (activated && connectionsManager.isTestBackend()) {
-                // The test auth key is not valid on a production-based custom server.
-                confirmLogout(fragment, account, ServerConfig.MODE_CUSTOM, onChanged);
+            if (ServerConfig.isSameCustom(account, host, port)) {
+                BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.ServerAlready)).show();
+                return;
+            }
+            Runnable apply = () -> ServerConfig.setCustom(account, host, port);
+            if (UserConfig.getInstance(account).isClientActivated()) {
+                // The current auth key belongs to another host and cannot be reused here.
+                confirmLogout(fragment, account, ServerConfig.MODE_CUSTOM, apply, onChanged);
             } else {
+                apply.run();
                 ServerConfig.setMode(account, ServerConfig.MODE_CUSTOM);
                 ServerConfig.apply(account);
                 if (onChanged != null) {

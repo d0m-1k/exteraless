@@ -10,8 +10,9 @@ import org.telegram.tgnet.ConnectionsManager;
  * Per-account choice of the Telegram backend: production DCs, the test DCs, or a custom server.
  *
  * The choice is keyed by the account slot and survives logout, so the same slot can be pointed at
- * another server before signing in again. Switching between production and test invalidates the
- * existing authorization (the auth key lives on the old backend), so the UI signs the account out
+ * another server before signing in again. Auth keys are issued per backend and are not tied to a
+ * host, so any switch between production, test and custom servers — including a different custom
+ * host or handshake key — invalidates the current authorization. The UI signs the account out
  * first and lets {@link #consumePending()} replay the choice on the login screen.
  */
 public final class ServerConfig {
@@ -109,6 +110,24 @@ public final class ServerConfig {
 
     public static void applyPublicKey(ConnectionsManager connectionsManager, int account) {
         connectionsManager.setServerPublicKey(getPublicKey(account), getPublicKeyFingerprint(account));
+    }
+
+    /** True when the account already points at this exact custom backend. */
+    public static boolean isSameCustom(int account, String host, int port) {
+        return getMode(account) == MODE_CUSTOM
+                && !TextUtils.isEmpty(host)
+                && host.equals(getHost(account))
+                && port == getPort(account);
+    }
+
+    /** Compares a key with the stored one; a zero fingerprint means "compute it from the key". */
+    public static boolean isSamePublicKey(int account, String publicKey, long fingerprint) {
+        String current = getPublicKey(account);
+        String value = publicKey == null ? "" : publicKey;
+        if (!current.equals(value)) {
+            return false;
+        }
+        return fingerprint == 0 || getPublicKeyFingerprint(account) == fingerprint;
     }
 
     public static boolean isTonpxPreset(int account) {
