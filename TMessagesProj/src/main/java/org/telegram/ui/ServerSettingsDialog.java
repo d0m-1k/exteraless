@@ -120,7 +120,7 @@ public final class ServerSettingsDialog {
         return connectionsManager.isTestBackend() == (mode == ServerConfig.MODE_TEST);
     }
 
-    private static void requestMode(BaseFragment fragment, int account, int mode, Runnable onChanged) {
+    public static void requestMode(BaseFragment fragment, int account, int mode, Runnable onChanged) {
         Context context = fragment.getParentActivity();
         if (context == null) {
             return;
@@ -166,7 +166,7 @@ public final class ServerSettingsDialog {
         fragment.showDialog(builder.create());
     }
 
-    private static void showCustom(BaseFragment fragment, int account, Runnable onChanged) {
+    public static void showCustom(BaseFragment fragment, int account, Runnable onChanged) {
         Context context = fragment.getParentActivity();
         if (context == null) {
             return;

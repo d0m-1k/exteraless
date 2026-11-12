@@ -19,6 +19,8 @@
     <string name="TransportIntermediate">Intermediate</string>
     <string name="TransportPadded">Padded intermediate</string>
     <string name="TransportFull">Full</string>
+    <string name="Obfuscated2">Obfuscated2</string>
+    <string name="Obfuscated2Info">Obfuscated2 — это слой обфускации поверх транспорта MTProto. Выключите, если ваш сервер ожидает обычный транспорт.</string>
     <string name="Obfuscated2Row">Obfuscated2: %1$s</string>
     <string name="Obfuscated2On">Вкл</string>
     <string name="Obfuscated2Off">Выкл</string>

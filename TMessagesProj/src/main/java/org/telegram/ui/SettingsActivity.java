@@ -1043,7 +1043,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 presentSettingFragment(new DataSettingsActivity());
                 break;
             case 200:
-                ServerSettingsDialog.show(this, currentAccount);
+                presentSettingFragment(new ServerSettingsActivity());
                 break;
             case 7:
                 presentSettingFragment(new FiltersSetupActivity());
