@@ -11708,7 +11708,7 @@
     <string name="PublicKeyDefault">Default (Telegram)</string>
     <string name="PublicKeyCustom">Custom key</string>
     <string name="PublicKeyPaste">Paste PEM key…</string>
-    <string name="PublicKeyHint">Paste the server's PEM public key</string>
+    <string name="PublicKeyHint">Paste the PEM public key of the server</string>
     <string name="PublicKeyInvalid">Invalid public key</string>
     <string name="PublicKeyApplied">Public key updated</string>
     <string name="PublicKeyInfo">Used to encrypt the MTProto handshake. Keep the default for official servers.</string>
