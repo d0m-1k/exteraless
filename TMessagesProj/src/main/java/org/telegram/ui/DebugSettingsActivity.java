@@ -30,6 +30,7 @@ import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.messenger.ServerConfig;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.SharedPrefsHelper;
 import org.telegram.messenger.UserConfig;
@@ -105,6 +106,7 @@ public class DebugSettingsActivity extends UniversalFragment {
     private static final int ID_WIDGET_STATIC_LAYERS = 44;
     private static final int ID_FORGET_HINTS = 45;
     private static final int ID_COMPACT_MODE = 46;
+    private static final int ID_SERVER = 47;
 
     @Override
     protected boolean useSimpleActionBar() {
@@ -176,6 +178,7 @@ public class DebugSettingsActivity extends UniversalFragment {
             items.add(UItem.asButton(ID_PERFORMANCE_CLASS, "Force performance class"));
         }
         items.add(UItem.asButton(ID_MEMORY_DUMP, "Make Memory Dump"));
+        items.add(UItem.asButton(ID_SERVER, getString(R.string.ServerSettings), ServerConfig.getDisplay(currentAccount)));
         if (BuildVars.DEBUG_PRIVATE_VERSION) {
             items.add(UItem.asCheck(ID_FLOATING_DEBUG, getString(R.string.FloatingDebugEnable)).setChecked(SharedConfig.isFloatingDebugActive));
         }
@@ -276,6 +279,9 @@ public class DebugSettingsActivity extends UniversalFragment {
             case ID_COMPACT_MODE:
                 SharedConfig.toggleCompactMode();
                 Theme.applyChatTheme(false, false);
+                break;
+            case ID_SERVER:
+                presentFragment(new ServerSettingsActivity());
                 break;
             case ID_FORGET_HINTS:
                 forgetAllHints();

@@ -237,11 +237,13 @@ public final class ServerSettingsDialog {
                 BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.ServerInvalid)).show();
                 return;
             }
-            if (ServerConfig.isSameCustom(account, host, port)) {
+            final String customHost = host;
+            final int customPort = port;
+            if (ServerConfig.isSameCustom(account, customHost, customPort)) {
                 BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.ServerAlready)).show();
                 return;
             }
-            Runnable apply = () -> ServerConfig.setCustom(account, host, port);
+            Runnable apply = () -> ServerConfig.setCustom(account, customHost, customPort);
             if (UserConfig.getInstance(account).isClientActivated()) {
                 // The current auth key belongs to another host and cannot be reused here.
                 confirmLogout(fragment, account, ServerConfig.MODE_CUSTOM, apply, onChanged);
