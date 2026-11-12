@@ -7,7 +7,6 @@ import android.view.View;
 
 import org.telegram.messenger.R;
 import org.telegram.messenger.ServerConfig;
-import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalFragment;
@@ -27,7 +26,6 @@ public class ServerSettingsActivity extends UniversalFragment {
     private static final int ID_TRANSPORT_ABRIDGED = 10;
     private static final int ID_TRANSPORT_INTERMEDIATE = 11;
     private static final int ID_TRANSPORT_PADDED = 12;
-    private static final int ID_TRANSPORT_FULL = 13;
 
     private static final int ID_OBFUSCATED2 = 20;
 
@@ -68,8 +66,7 @@ public class ServerSettingsActivity extends UniversalFragment {
         items.add(UItem.asRadio(ID_TRANSPORT_ABRIDGED, getString(R.string.TransportAbridged)).setChecked(transport == ServerConfig.TRANSPORT_ABRIDGED));
         items.add(UItem.asRadio(ID_TRANSPORT_INTERMEDIATE, getString(R.string.TransportIntermediate)).setChecked(transport == ServerConfig.TRANSPORT_INTERMEDIATE));
         items.add(UItem.asRadio(ID_TRANSPORT_PADDED, getString(R.string.TransportPadded)).setChecked(transport == ServerConfig.TRANSPORT_PADDED));
-        items.add(UItem.asRadio(ID_TRANSPORT_FULL, getString(R.string.TransportFull)).setChecked(transport == ServerConfig.TRANSPORT_FULL));
-        items.add(UItem.asShadow(getString(R.string.Obfuscated2FullHint)));
+        items.add(UItem.asShadow(null));
 
         items.add(UItem.asSwitch(ID_OBFUSCATED2, getString(R.string.Obfuscated2)).setChecked(obfuscated));
         items.add(UItem.asShadow(getString(R.string.Obfuscated2Info)));
@@ -94,16 +91,12 @@ public class ServerSettingsActivity extends UniversalFragment {
                 break;
             case ID_TRANSPORT_ABRIDGED:
             case ID_TRANSPORT_INTERMEDIATE:
-            case ID_TRANSPORT_PADDED:
-            case ID_TRANSPORT_FULL: {
+            case ID_TRANSPORT_PADDED: {
                 if (ServerConfig.getTransport(currentAccount) == item.id - ID_TRANSPORT_ABRIDGED) {
                     return;
                 }
                 ServerConfig.setTransport(currentAccount, item.id - ID_TRANSPORT_ABRIDGED);
                 refresh.run();
-                if (item.id == ID_TRANSPORT_FULL && ServerConfig.isObfuscated2(currentAccount)) {
-                    BulletinFactory.of(this).createSimpleBulletin(R.raw.chats_infotip, getString(R.string.Obfuscated2FullHint)).show();
-                }
                 break;
             }
             case ID_OBFUSCATED2:

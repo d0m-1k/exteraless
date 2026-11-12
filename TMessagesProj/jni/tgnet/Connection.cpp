@@ -206,7 +206,7 @@ void Connection::onReceivedData(NativeByteBuffer *buffer) {
 
             uint32_t fInt = buffer->readUint32(nullptr);
 
-            if (currentProtocolType != ProtocolTypeFull && (fInt & (0x80000000)) != 0) {
+            if ((fInt & (0x80000000)) != 0) {
                 ConnectionsManager::getInstance(currentDatacenter->instanceNum).onConnectionQuickAckReceived(this, fInt & (~(1 << 31)));
                 continue;
             }
@@ -215,7 +215,7 @@ void Connection::onReceivedData(NativeByteBuffer *buffer) {
             len = currentPacketLength + 4;
         }
 
-        if (currentProtocolType != ProtocolTypeDD && currentProtocolType != ProtocolTypeTLS && currentProtocolType != ProtocolTypeFull && currentPacketLength % 4 != 0 || currentPacketLength > 2 * 1024 * 1024) {
+        if (currentProtocolType != ProtocolTypeDD && currentProtocolType != ProtocolTypeTLS && currentPacketLength % 4 != 0 || currentPacketLength > 2 * 1024 * 1024) {
             if (LOGS_ENABLED) DEBUG_D("connection(%p, account%u, dc%u, type %d) received invalid packet length", this, currentDatacenter->instanceNum, currentDatacenter->getDatacenterId(), connectionType);
             reconnect();
             break;
@@ -486,17 +486,31 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
                 case 2:
                     currentProtocolType = ProtocolTypeDD;
                     break;
-                case 3:
-                    currentProtocolType = ProtocolTypeFull;
-                    break;
                 default:
                     currentProtocolType = ProtocolTypeEF;
                     break;
             }
-            // Full has no obfuscation marker, so it is always sent as a plain transport.
-            plainTransport = !forcedObfuscated || forcedTransport == 3;
+            plainTransport = !forcedObfuscated;
         } else {
             plainTransport = false;
+        }
+    }
+
+    // A standalone transport marker is sent once before the first packet, but only for a plain
+    // (not obfuscated) connection: with Obfuscated2 the marker lives inside the 64-byte header
+    // at offset 56 instead and must not be repeated.
+    uint32_t protocolMarkerLength = 0;
+    int32_t protocolMarkerValue = 0;
+    if (!firstPacketSent && plainTransport) {
+        if (currentProtocolType == ProtocolTypeEF) {
+            protocolMarkerLength = 1;
+            protocolMarkerValue = 0xef;
+        } else if (currentProtocolType == ProtocolTypeEE) {
+            protocolMarkerLength = 4;
+            protocolMarkerValue = (int32_t) 0xeeeeeeee;
+        } else if (currentProtocolType == ProtocolTypeDD) {
+            protocolMarkerLength = 4;
+            protocolMarkerValue = (int32_t) 0xdddddddd;
         }
     }
 
@@ -508,9 +522,6 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
         } else {
             bufferLen += 4;
         }
-    } else if (currentProtocolType == ProtocolTypeFull) {
-        packetLength = buff->limit();
-        bufferLen += 4;
     } else {
         packetLength = buff->limit();
         if (currentProtocolType == ProtocolTypeDD || currentProtocolType == ProtocolTypeTLS) {
@@ -531,6 +542,7 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
     if (!firstPacketSent && !plainTransport) {
         bufferLen += 64;
     }
+    bufferLen += protocolMarkerLength;
 
     NativeByteBuffer *buffer = BuffersStorage::getInstance().getFreeBuffer(bufferLen);
     NativeByteBuffer *buffer2;
@@ -610,6 +622,11 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
         
         firstPacketSent = true;
     }
+    if (protocolMarkerLength == 1) {
+        buffer->writeByte((uint8_t) protocolMarkerValue);
+    } else if (protocolMarkerLength == 4) {
+        buffer->writeInt32(protocolMarkerValue);
+    }
     if (currentProtocolType == ProtocolTypeEF) {
         if (packetLength < 0x7f) {
             if (reportAck) {
@@ -631,9 +648,6 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
                 AES_ctr128_encrypt(bytes, bytes, 4, &encryptKey, encryptIv, encryptCount, &encryptNum);
             }
         }
-    } else if (currentProtocolType == ProtocolTypeFull) {
-        // Full transport: plain 32-bit little-endian length, no obfuscation layer.
-        buffer->writeInt32(packetLength);
     } else {
         if (reportAck) {
             packetLength |= 0x80000000;

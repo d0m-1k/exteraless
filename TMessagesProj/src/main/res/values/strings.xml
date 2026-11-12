@@ -11702,11 +11702,9 @@
     <string name="TransportAbridged">Abridged</string>
     <string name="TransportIntermediate">Intermediate</string>
     <string name="TransportPadded">Padded intermediate</string>
-    <string name="TransportFull">Full</string>
     <string name="Obfuscated2">Obfuscated2</string>
     <string name="Obfuscated2Info">Obfuscated2 is an obfuscation layer over the MTProto transport. Turn it off if your server expects a plain transport.</string>
     <string name="Obfuscated2Row">Obfuscated2: %1$s</string>
     <string name="Obfuscated2On">On</string>
     <string name="Obfuscated2Off">Off</string>
-    <string name="Obfuscated2FullHint">Full is always sent without Obfuscated2</string>
 </resources>

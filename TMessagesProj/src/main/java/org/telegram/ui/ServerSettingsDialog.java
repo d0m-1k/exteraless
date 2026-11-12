@@ -66,8 +66,7 @@ public final class ServerSettingsDialog {
         CharSequence[] items = new CharSequence[]{
                 transportItem(ServerConfig.TRANSPORT_ABRIDGED, current),
                 transportItem(ServerConfig.TRANSPORT_INTERMEDIATE, current),
-                transportItem(ServerConfig.TRANSPORT_PADDED, current),
-                transportItem(ServerConfig.TRANSPORT_FULL, current)
+                transportItem(ServerConfig.TRANSPORT_PADDED, current)
         };
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle(LocaleController.getString(R.string.ServerTransport));
@@ -79,11 +78,7 @@ public final class ServerSettingsDialog {
             if (onChanged != null) {
                 onChanged.run();
             }
-            if (which == ServerConfig.TRANSPORT_FULL && ServerConfig.isObfuscated2(account)) {
-                BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.Obfuscated2FullHint)).show();
-            } else {
-                BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.ServerApplied)).show();
-            }
+            BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.ServerApplied)).show();
         });
         builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
         fragment.showDialog(builder.create());

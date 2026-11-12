@@ -23,7 +23,6 @@ public final class ServerConfig {
     public static final int TRANSPORT_ABRIDGED = 0;
     public static final int TRANSPORT_INTERMEDIATE = 1;
     public static final int TRANSPORT_PADDED = 2;
-    public static final int TRANSPORT_FULL = 3;
 
     private static final String PREFS = "exteraless_server";
     private static final long PENDING_TTL_MS = 10 * 60 * 1000L;
@@ -86,7 +85,9 @@ public final class ServerConfig {
 
     public static int getTransport(int account) {
         SharedPreferences preferences = prefs();
-        return preferences == null ? TRANSPORT_ABRIDGED : preferences.getInt("transport" + account, TRANSPORT_ABRIDGED);
+        int transport = preferences == null ? TRANSPORT_ABRIDGED : preferences.getInt("transport" + account, TRANSPORT_ABRIDGED);
+        // Full was an option in earlier builds; fall back to Abridged for those accounts.
+        return transport > TRANSPORT_PADDED ? TRANSPORT_ABRIDGED : transport;
     }
 
     public static void setTransport(int account, int transport) {
@@ -126,8 +127,6 @@ public final class ServerConfig {
                 return LocaleController.getString(R.string.TransportIntermediate);
             case TRANSPORT_PADDED:
                 return LocaleController.getString(R.string.TransportPadded);
-            case TRANSPORT_FULL:
-                return LocaleController.getString(R.string.TransportFull);
             default:
                 return LocaleController.getString(R.string.TransportAbridged);
         }
