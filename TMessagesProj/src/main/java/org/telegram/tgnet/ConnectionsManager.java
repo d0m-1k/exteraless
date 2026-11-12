@@ -873,6 +873,15 @@ public class ConnectionsManager extends BaseController {
         native_setTransport(currentAccount, transport, obfuscated);
     }
 
+    /**
+     * Pins the RSA key used to encrypt the MTProto handshake. An empty key restores the built-in
+     * Telegram keys. {@code fingerprint} is the value advertised by the server; pass 0 to compute
+     * it from the key.
+     */
+    public void setServerPublicKey(String publicKey, long fingerprint) {
+        native_setServerPublicKey(currentAccount, publicKey == null ? "" : publicKey, fingerprint);
+    }
+
     public void resumeNetworkMaybe() {
         native_resumeNetwork(currentAccount, true);
     }
@@ -1173,6 +1182,7 @@ public class ConnectionsManager extends BaseController {
     public static native void native_setCustomServer(int currentAccount, String address, int port);
     public static native void native_clearCustomServer(int currentAccount);
     public static native void native_setTransport(int currentAccount, int transport, boolean obfuscated);
+    public static native void native_setServerPublicKey(int currentAccount, String publicKey, long fingerprint);
     public static native void native_pauseNetwork(int currentAccount);
     public static native void native_setIpStrategy(int currentAccount, byte value);
     public static native void native_updateDcSettings(int currentAccount);

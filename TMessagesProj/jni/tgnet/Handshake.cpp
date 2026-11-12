@@ -13,6 +13,8 @@
 #include <openssl/sha.h>
 #include <openssl/bn.h>
 #include <openssl/pem.h>
+#include <openssl/evp.h>
+#include <openssl/err.h>
 #include <openssl/aes.h>
 #include <memory.h>
 #include "Handshake.h"
@@ -319,6 +321,58 @@ inline bool isGoodGaAndGb(BIGNUM *g_a, BIGNUM *p) {
     return true;
 }
 
+static RSA *readServerPublicKey(const std::string &key) {
+    BIO *keyBio = BIO_new(BIO_s_mem());
+    if (keyBio == nullptr) {
+        return nullptr;
+    }
+    BIO_write(keyBio, key.c_str(), (int) key.length());
+    RSA *rsaKey = PEM_read_bio_RSAPublicKey(keyBio, nullptr, nullptr, nullptr);
+    if (rsaKey == nullptr) {
+        ERR_clear_error();
+        // Servers may publish an X.509 SubjectPublicKeyInfo ("BEGIN PUBLIC KEY") instead of a
+        // PKCS#1 RSAPublicKey ("BEGIN RSA PUBLIC KEY").
+        BIO_reset(keyBio);
+        BIO_write(keyBio, key.c_str(), (int) key.length());
+        EVP_PKEY *pkey = PEM_read_bio_PUBKEY(keyBio, nullptr, nullptr, nullptr);
+        if (pkey != nullptr) {
+            rsaKey = EVP_PKEY_get1_RSA(pkey);
+            EVP_PKEY_free(pkey);
+        }
+    }
+    BIO_free(keyBio);
+    return rsaKey;
+}
+
+static int64_t computeServerPublicKeyFingerprint(RSA *rsaKey) {
+    const BIGNUM *n = nullptr;
+    const BIGNUM *e = nullptr;
+    RSA_get0_key(rsaKey, &n, &e, nullptr);
+    if (n == nullptr || e == nullptr) {
+        return 0;
+    }
+    int nBytes = BN_num_bytes(n);
+    int eBytes = BN_num_bytes(e);
+    std::string nStr(nBytes, 0), eStr(eBytes, 0);
+    BN_bn2bin(n, (uint8_t *) &nStr[0]);
+    BN_bn2bin(e, (uint8_t *) &eStr[0]);
+    NativeByteBuffer *buffer = BuffersStorage::getInstance().getFreeBuffer(1024);
+    buffer->writeString(nStr);
+    buffer->writeString(eStr);
+    uint8_t sha1Buffer[20];
+    SHA1(buffer->bytes(), buffer->position(), sha1Buffer);
+    buffer->reuse();
+    uint64_t fingerprint = ((uint64_t) sha1Buffer[19]) << 56 |
+                           ((uint64_t) sha1Buffer[18]) << 48 |
+                           ((uint64_t) sha1Buffer[17]) << 40 |
+                           ((uint64_t) sha1Buffer[16]) << 32 |
+                           ((uint64_t) sha1Buffer[15]) << 24 |
+                           ((uint64_t) sha1Buffer[14]) << 16 |
+                           ((uint64_t) sha1Buffer[13]) << 8 |
+                           ((uint64_t) sha1Buffer[12]);
+    return (int64_t) fingerprint;
+}
+
 void Handshake::cleanupServerKeys() {
     serverPublicKeys.clear();
     serverPublicKeysFingerprints.clear();
@@ -362,41 +416,60 @@ void Handshake::processHandshakeResponse_resPQ(TLObject *message, int64_t messag
                 }
             }
         } else {
-            if (serverPublicKeys.empty()) {
-                if (ConnectionsManager::getInstance(currentDatacenter->instanceNum).testBackend) {
-                    serverPublicKeys.emplace_back("-----BEGIN RSA PUBLIC KEY-----\n"
-                                                  "MIIBCgKCAQEAyMEdY1aR+sCR3ZSJrtztKTKqigvO/vBfqACJLZtS7QMgCGXJ6XIR\n"
-                                                  "yy7mx66W0/sOFa7/1mAZtEoIokDP3ShoqF4fVNb6XeqgQfaUHd8wJpDWHcR2OFwv\n"
-                                                  "plUUI1PLTktZ9uW2WE23b+ixNwJjJGwBDJPQEQFBE+vfmH0JP503wr5INS1poWg/\n"
-                                                  "j25sIWeYPHYeOrFp/eXaqhISP6G+q2IeTaWTXpwZj4LzXq5YOpk4bYEQ6mvRq7D1\n"
-                                                  "aHWfYmlEGepfaYR8Q0YqvvhYtMte3ITnuSJs171+GDqpdKcSwHnd6FudwGO4pcCO\n"
-                                                  "j4WcDuXc2CTHgH8gFTNhp/Y8/SpDOhvn9QIDAQAB\n"
-                                                  "-----END RSA PUBLIC KEY-----");
-                    serverPublicKeysFingerprints.push_back(0xb25898df208d2603);
-                } else {
-                    serverPublicKeys.emplace_back("-----BEGIN RSA PUBLIC KEY-----\n"
-                                                  "MIIBCgKCAQEA6LszBcC1LGzyr992NzE0ieY+BSaOW622Aa9Bd4ZHLl+TuFQ4lo4g\n"
-                                                  "5nKaMBwK/BIb9xUfg0Q29/2mgIR6Zr9krM7HjuIcCzFvDtr+L0GQjae9H0pRB2OO\n"
-                                                  "62cECs5HKhT5DZ98K33vmWiLowc621dQuwKWSQKjWf50XYFw42h21P2KXUGyp2y/\n"
-                                                  "+aEyZ+uVgLLQbRA1dEjSDZ2iGRy12Mk5gpYc397aYp438fsJoHIgJ2lgMv5h7WY9\n"
-                                                  "t6N/byY9Nw9p21Og3AoXSL2q/2IJ1WRUhebgAdGVMlV1fkuOQoEzR7EdpqtQD9Cs\n"
-                                                  "5+bfo3Nhmcyvk5ftB0WkJ9z6bNZ7yxrP8wIDAQAB\n"
-                                                  "-----END RSA PUBLIC KEY-----");
-                    serverPublicKeysFingerprints.push_back(0xd09d1d85de64fd85);
-                }
-            }
-
-            size_t count2 = serverPublicKeysFingerprints.size();
-            for (uint32_t a = 0; a < count1; a++) {
-                for (uint32_t b = 0; b < count2; b++) {
-                    if ((uint64_t) result->server_public_key_fingerprints[a] == serverPublicKeysFingerprints[b]) {
-                        keyFingerprint = result->server_public_key_fingerprints[a];
-                        key = serverPublicKeys[b];
-                        break;
+            // A custom server can pin its own RSA key; it is used as-is and the fingerprints the
+            // server advertises are ignored, because they may not be known to the client.
+            const std::string &customKey = ConnectionsManager::getInstance(currentDatacenter->instanceNum).getServerPublicKey();
+            if (!customKey.empty()) {
+                int64_t fingerprint = ConnectionsManager::getInstance(currentDatacenter->instanceNum).getServerPublicKeyFingerprint();
+                if (fingerprint == 0) {
+                    RSA *customRsaKey = readServerPublicKey(customKey);
+                    if (customRsaKey != nullptr) {
+                        fingerprint = computeServerPublicKeyFingerprint(customRsaKey);
+                        RSA_free(customRsaKey);
                     }
                 }
-                if (keyFingerprint != 0) {
-                    break;
+                if (fingerprint != 0) {
+                    key = customKey;
+                    keyFingerprint = fingerprint;
+                }
+            }
+            if (keyFingerprint == 0) {
+                if (serverPublicKeys.empty()) {
+                    if (ConnectionsManager::getInstance(currentDatacenter->instanceNum).testBackend) {
+                        serverPublicKeys.emplace_back("-----BEGIN RSA PUBLIC KEY-----\n"
+                                                      "MIIBCgKCAQEAyMEdY1aR+sCR3ZSJrtztKTKqigvO/vBfqACJLZtS7QMgCGXJ6XIR\n"
+                                                      "yy7mx66W0/sOFa7/1mAZtEoIokDP3ShoqF4fVNb6XeqgQfaUHd8wJpDWHcR2OFwv\n"
+                                                      "plUUI1PLTktZ9uW2WE23b+ixNwJjJGwBDJPQEQFBE+vfmH0JP503wr5INS1poWg/\n"
+                                                      "j25sIWeYPHYeOrFp/eXaqhISP6G+q2IeTaWTXpwZj4LzXq5YOpk4bYEQ6mvRq7D1\n"
+                                                      "aHWfYmlEGepfaYR8Q0YqvvhYtMte3ITnuSJs171+GDqpdKcSwHnd6FudwGO4pcCO\n"
+                                                      "j4WcDuXc2CTHgH8gFTNhp/Y8/SpDOhvn9QIDAQAB\n"
+                                                      "-----END RSA PUBLIC KEY-----");
+                        serverPublicKeysFingerprints.push_back(0xb25898df208d2603);
+                    } else {
+                        serverPublicKeys.emplace_back("-----BEGIN RSA PUBLIC KEY-----\n"
+                                                      "MIIBCgKCAQEA6LszBcC1LGzyr992NzE0ieY+BSaOW622Aa9Bd4ZHLl+TuFQ4lo4g\n"
+                                                      "5nKaMBwK/BIb9xUfg0Q29/2mgIR6Zr9krM7HjuIcCzFvDtr+L0GQjae9H0pRB2OO\n"
+                                                      "62cECs5HKhT5DZ98K33vmWiLowc621dQuwKWSQKjWf50XYFw42h21P2KXUGyp2y/\n"
+                                                      "+aEyZ+uVgLLQbRA1dEjSDZ2iGRy12Mk5gpYc397aYp438fsJoHIgJ2lgMv5h7WY9\n"
+                                                      "t6N/byY9Nw9p21Og3AoXSL2q/2IJ1WRUhebgAdGVMlV1fkuOQoEzR7EdpqtQD9Cs\n"
+                                                      "5+bfo3Nhmcyvk5ftB0WkJ9z6bNZ7yxrP8wIDAQAB\n"
+                                                      "-----END RSA PUBLIC KEY-----");
+                        serverPublicKeysFingerprints.push_back(0xd09d1d85de64fd85);
+                    }
+                }
+
+                size_t count2 = serverPublicKeysFingerprints.size();
+                for (uint32_t a = 0; a < count1; a++) {
+                    for (uint32_t b = 0; b < count2; b++) {
+                        if ((uint64_t) result->server_public_key_fingerprints[a] == serverPublicKeysFingerprints[b]) {
+                            keyFingerprint = result->server_public_key_fingerprints[a];
+                            key = serverPublicKeys[b];
+                            break;
+                        }
+                    }
+                    if (keyFingerprint != 0) {
+                        break;
+                    }
                 }
             }
         }
@@ -511,10 +584,7 @@ void Handshake::processHandshakeResponse_resPQ(TLObject *message, int64_t messag
         innerData->serializeToStream(innerDataBuffer);
         delete innerData;
 
-        BIO *keyBio = BIO_new(BIO_s_mem());
-        BIO_write(keyBio, key.c_str(), (int) key.length());
-        RSA *rsaKey = PEM_read_bio_RSAPublicKey(keyBio, nullptr, nullptr, nullptr);
-        BIO_free(keyBio);
+        RSA *rsaKey = readServerPublicKey(key);
 
         while (true) {
             RAND_bytes(innerDataBuffer->bytes() + encryptedDataSize + innerDataSize, additionalSize);

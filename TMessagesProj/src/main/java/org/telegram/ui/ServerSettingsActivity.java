@@ -22,6 +22,8 @@ public class ServerSettingsActivity extends UniversalFragment {
     private static final int ID_PROD = 1;
     private static final int ID_TEST = 2;
     private static final int ID_CUSTOM = 3;
+    private static final int ID_TONPX = 4;
+    private static final int ID_PUBLIC_KEY = 5;
 
     private static final int ID_TRANSPORT_ABRIDGED = 10;
     private static final int ID_TRANSPORT_INTERMEDIATE = 11;
@@ -55,12 +57,16 @@ public class ServerSettingsActivity extends UniversalFragment {
         final int mode = ServerConfig.getMode(currentAccount);
         final int transport = ServerConfig.getTransport(currentAccount);
         final boolean obfuscated = ServerConfig.isObfuscated2(currentAccount);
+        final boolean tonpx = ServerConfig.isTonpxPreset(currentAccount);
 
         items.add(UItem.asHeader(getString(R.string.ServerSettings)));
         items.add(UItem.asRadio(ID_PROD, getString(R.string.ServerProd)).setChecked(mode == ServerConfig.MODE_PROD));
         items.add(UItem.asRadio(ID_TEST, getString(R.string.ServerTest)).setChecked(mode == ServerConfig.MODE_TEST));
-        items.add(UItem.asRadio(ID_CUSTOM, getString(R.string.ServerCustom), getCustomAddress()).setChecked(mode == ServerConfig.MODE_CUSTOM));
+        items.add(UItem.asRadio(ID_TONPX, getString(R.string.ServerTonpx), ServerConfig.PRESET_TONPX_HOST + ":" + ServerConfig.PRESET_TONPX_PORT).setChecked(tonpx));
+        items.add(UItem.asRadio(ID_CUSTOM, getString(R.string.ServerCustom), getCustomAddress()).setChecked(mode == ServerConfig.MODE_CUSTOM && !tonpx));
         items.add(UItem.asShadow(getString(R.string.ServerSettingsInfo)));
+        items.add(UItem.asButton(ID_PUBLIC_KEY, getString(R.string.PublicKey), ServerConfig.getPublicKeyName(currentAccount)));
+        items.add(UItem.asShadow(getString(R.string.PublicKeyInfo)));
 
         items.add(UItem.asHeader(getString(R.string.ServerTransport)));
         items.add(UItem.asRadio(ID_TRANSPORT_ABRIDGED, getString(R.string.TransportAbridged)).setChecked(transport == ServerConfig.TRANSPORT_ABRIDGED));
@@ -88,6 +94,16 @@ public class ServerSettingsActivity extends UniversalFragment {
                 break;
             case ID_CUSTOM:
                 ServerSettingsDialog.showCustom(this, currentAccount, refresh);
+                break;
+            case ID_TONPX:
+                if (!ServerConfig.isTonpxPreset(currentAccount)) {
+                    ServerSettingsDialog.applyPreset(this, currentAccount, ServerConfig.PRESET_TONPX_HOST,
+                            ServerConfig.PRESET_TONPX_PORT, ServerConfig.PRESET_TONPX_KEY,
+                            ServerConfig.PRESET_TONPX_FINGERPRINT, refresh);
+                }
+                break;
+            case ID_PUBLIC_KEY:
+                ServerSettingsDialog.showPublicKey(this, currentAccount, refresh);
                 break;
             case ID_TRANSPORT_ABRIDGED:
             case ID_TRANSPORT_INTERMEDIATE:

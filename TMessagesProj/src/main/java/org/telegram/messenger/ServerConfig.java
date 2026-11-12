@@ -20,6 +20,20 @@ public final class ServerConfig {
     public static final int MODE_TEST = 1;
     public static final int MODE_CUSTOM = 2;
 
+    /** Ready-made custom backend: host, port and the RSA key it uses for the MTProto handshake. */
+    public static final String PRESET_TONPX_HOST = "tonpx.fun";
+    public static final int PRESET_TONPX_PORT = 7443;
+    public static final long PRESET_TONPX_FINGERPRINT = 0xc5b80f7207736c16L;
+    public static final String PRESET_TONPX_KEY = "-----BEGIN PUBLIC KEY-----\n"
+            + "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAhSSDPOcRqGzdhM3tS6Vr\n"
+            + "GH+0pKKCVacMCyP3+UDqGZIHYg33aFUZpJP6I8eqOiWxkjCJe8FNrTjw7J9bBQmc\n"
+            + "MS5FtUnC15C/gpCPNdGRGGm2iFjyFdr0a7SWQrK7f5yVsI81kEUbxcokP55aDkKw\n"
+            + "MUydtlm9fkCyyOyX9KLzYGDvOPn89WprMx9Gjzt5hpL9wSlS4ucfUlJlKGkK3iXO\n"
+            + "y7ZkQsxktEFAILgC/ef6pKHfulWYH0g61kPS7HZgVCfvBjJelgiyl7EeZPpEKkwm\n"
+            + "43zuey7rHW6PCUetkBckfWfp5MfqhRWRWQdHS9VXiVMkHmRdX06a0FIF4gF59l1O\n"
+            + "yQIDAQAB\n"
+            + "-----END PUBLIC KEY-----";
+
     public static final int TRANSPORT_ABRIDGED = 0;
     public static final int TRANSPORT_INTERMEDIATE = 1;
     public static final int TRANSPORT_PADDED = 2;
@@ -68,6 +82,51 @@ public final class ServerConfig {
                     .putInt("port" + account, port)
                     .apply();
         }
+    }
+
+    public static String getPublicKey(int account) {
+        SharedPreferences preferences = prefs();
+        return preferences == null ? "" : preferences.getString("publicKey" + account, "");
+    }
+
+    public static long getPublicKeyFingerprint(int account) {
+        SharedPreferences preferences = prefs();
+        return preferences == null ? 0 : preferences.getLong("publicKeyFingerprint" + account, 0);
+    }
+
+    public static void setPublicKey(int account, String publicKey, long fingerprint) {
+        SharedPreferences preferences = prefs();
+        if (preferences != null) {
+            preferences.edit()
+                    .putString("publicKey" + account, publicKey == null ? "" : publicKey)
+                    .putLong("publicKeyFingerprint" + account, fingerprint)
+                    .apply();
+        }
+        ConnectionsManager connectionsManager = ConnectionsManager.getInstance(account);
+        applyPublicKey(connectionsManager, account);
+        discardGenericConnections(account);
+    }
+
+    public static void applyPublicKey(ConnectionsManager connectionsManager, int account) {
+        connectionsManager.setServerPublicKey(getPublicKey(account), getPublicKeyFingerprint(account));
+    }
+
+    public static boolean isTonpxPreset(int account) {
+        return getMode(account) == MODE_CUSTOM
+                && PRESET_TONPX_HOST.equals(getHost(account))
+                && getPort(account) == PRESET_TONPX_PORT
+                && PRESET_TONPX_KEY.equals(getPublicKey(account));
+    }
+
+    public static String getPublicKeyName(int account) {
+        String key = getPublicKey(account);
+        if (TextUtils.isEmpty(key)) {
+            return LocaleController.getString(R.string.PublicKeyDefault);
+        }
+        if (PRESET_TONPX_KEY.equals(key)) {
+            return LocaleController.getString(R.string.ServerTonpx);
+        }
+        return LocaleController.getString(R.string.PublicKeyCustom);
     }
 
     public static String getDisplay(int account) {
@@ -158,11 +217,14 @@ public final class ServerConfig {
             if (preferences != null) {
                 preferences.edit().putBoolean("custom" + account, true).apply();
             }
-        } else if (wasCustom) {
-            connectionsManager.clearCustomServer();
-            if (preferences != null) {
-                preferences.edit().putBoolean("custom" + account, false).apply();
+        } else {
+            if (wasCustom) {
+                connectionsManager.clearCustomServer();
+                if (preferences != null) {
+                    preferences.edit().putBoolean("custom" + account, false).apply();
+                }
             }
+            connectionsManager.setServerPublicKey("", 0);
         }
     }
 
@@ -178,6 +240,7 @@ public final class ServerConfig {
             return;
         }
         connectionsManager.setCustomServer(host, port);
+        applyPublicKey(connectionsManager, account);
     }
 
     public static void setPending(int mode) {

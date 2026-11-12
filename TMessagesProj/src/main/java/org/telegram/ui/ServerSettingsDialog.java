@@ -2,6 +2,7 @@ package org.telegram.ui;
 
 import android.content.Context;
 import android.text.InputType;
+import android.view.Gravity;
 import android.text.TextUtils;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -40,15 +41,22 @@ public final class ServerSettingsDialog {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle(LocaleController.getString(R.string.ServerSettings));
         // Transport and Obfuscated2 have their own rows on the login screen, so this dialog only
-        // picks the backend mode.
+        // picks the backend mode and its handshake key.
         CharSequence[] items = new CharSequence[]{
                 LocaleController.getString(R.string.ServerProd),
                 LocaleController.getString(R.string.ServerTest),
-                LocaleController.getString(R.string.ServerCustom)
+                LocaleController.getString(R.string.ServerTonpx),
+                LocaleController.getString(R.string.ServerCustom),
+                LocaleController.formatString("PublicKeyRow", R.string.PublicKeyRow, ServerConfig.getPublicKeyName(account))
         };
         builder.setItems(items, (dialog, which) -> {
             if (which == 2) {
+                applyPreset(fragment, account, ServerConfig.PRESET_TONPX_HOST, ServerConfig.PRESET_TONPX_PORT,
+                        ServerConfig.PRESET_TONPX_KEY, ServerConfig.PRESET_TONPX_FINGERPRINT, onChanged);
+            } else if (which == 3) {
                 showCustom(fragment, account, onChanged);
+            } else if (which == 4) {
+                showPublicKey(fragment, account, onChanged);
             } else {
                 requestMode(fragment, account, which == 1 ? ServerConfig.MODE_TEST : ServerConfig.MODE_PROD, onChanged);
             }
@@ -152,6 +160,101 @@ public final class ServerSettingsDialog {
                 onChanged.run();
             }
             MessagesController.getInstance(account).performLogout(0);
+        });
+        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
+        fragment.showDialog(builder.create());
+    }
+
+    /** Points the account at a ready-made custom server together with its pinned RSA key. */
+    public static void applyPreset(BaseFragment fragment, int account, String host, int port, String publicKey, long fingerprint, Runnable onChanged) {
+        Context context = fragment.getParentActivity();
+        if (context == null) {
+            return;
+        }
+        ServerConfig.setCustom(account, host, port);
+        ServerConfig.setPublicKey(account, publicKey, fingerprint);
+        boolean activated = UserConfig.getInstance(account).isClientActivated();
+        ConnectionsManager connectionsManager = ConnectionsManager.getInstance(account);
+        if (activated && connectionsManager.isTestBackend()) {
+            // The test auth key is not valid on a production-based custom server.
+            confirmLogout(fragment, account, ServerConfig.MODE_CUSTOM, onChanged);
+        } else {
+            ServerConfig.setMode(account, ServerConfig.MODE_CUSTOM);
+            ServerConfig.apply(account);
+            if (onChanged != null) {
+                onChanged.run();
+            }
+            BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.ServerApplied)).show();
+        }
+    }
+
+    /** Picks the RSA key used for the MTProto handshake: built-in, the tonpx.fun preset, or a pasted one. */
+    public static void showPublicKey(BaseFragment fragment, int account, Runnable onChanged) {
+        Context context = fragment.getParentActivity();
+        if (context == null) {
+            return;
+        }
+        CharSequence[] items = new CharSequence[]{
+                LocaleController.getString(R.string.PublicKeyDefault),
+                LocaleController.getString(R.string.ServerTonpx),
+                LocaleController.getString(R.string.PublicKeyPaste)
+        };
+        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        builder.setTitle(LocaleController.formatString("PublicKeyRow", R.string.PublicKeyRow, ServerConfig.getPublicKeyName(account)));
+        builder.setItems(items, (dialog, which) -> {
+            if (which == 0) {
+                ServerConfig.setPublicKey(account, "", 0);
+                if (onChanged != null) {
+                    onChanged.run();
+                }
+                BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.PublicKeyApplied)).show();
+            } else if (which == 1) {
+                ServerConfig.setPublicKey(account, ServerConfig.PRESET_TONPX_KEY, ServerConfig.PRESET_TONPX_FINGERPRINT);
+                if (onChanged != null) {
+                    onChanged.run();
+                }
+                BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.PublicKeyApplied)).show();
+            } else {
+                showPublicKeyInput(fragment, account, onChanged);
+            }
+        });
+        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
+        fragment.showDialog(builder.create());
+    }
+
+    private static void showPublicKeyInput(BaseFragment fragment, int account, Runnable onChanged) {
+        Context context = fragment.getParentActivity();
+        if (context == null) {
+            return;
+        }
+        LinearLayout layout = new LinearLayout(context);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        int padding = AndroidUtilities.dp(24);
+        layout.setPadding(padding, AndroidUtilities.dp(8), padding, 0);
+
+        EditText keyEdit = new EditText(context);
+        keyEdit.setHint(LocaleController.getString(R.string.PublicKeyHint));
+        keyEdit.setSingleLine(false);
+        keyEdit.setMinLines(4);
+        keyEdit.setGravity(Gravity.TOP);
+        keyEdit.setText(ServerConfig.getPublicKey(account));
+        layout.addView(keyEdit, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        builder.setTitle(LocaleController.getString(R.string.PublicKey));
+        builder.setView(layout);
+        builder.setPositiveButton(LocaleController.getString(R.string.Save), (dialog, which) -> {
+            String publicKey = keyEdit.getText().toString().trim();
+            if (!publicKey.contains("-----BEGIN") || !publicKey.contains("KEY-----")) {
+                BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.PublicKeyInvalid)).show();
+                return;
+            }
+            // Fingerprint is computed natively from the key for keys pasted by the user.
+            ServerConfig.setPublicKey(account, publicKey, 0);
+            if (onChanged != null) {
+                onChanged.run();
+            }
+            BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.PublicKeyApplied)).show();
         });
         builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
         fragment.showDialog(builder.create());

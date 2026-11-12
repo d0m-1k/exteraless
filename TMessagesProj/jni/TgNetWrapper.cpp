@@ -272,6 +272,16 @@ void setCustomServer(JNIEnv *env, jclass c, jint instanceNum, jstring address, j
     ConnectionsManager::getInstance(instanceNum).setCustomServer(value, (uint32_t) port);
 }
 
+void setServerPublicKey(JNIEnv *env, jclass c, jint instanceNum, jstring key, jlong fingerprint) {
+    std::string value;
+    if (key != nullptr) {
+        const char *valueStr = env->GetStringUTFChars(key, 0);
+        value = std::string(valueStr);
+        env->ReleaseStringUTFChars(key, valueStr);
+    }
+    ConnectionsManager::getInstance(instanceNum).setServerPublicKey(value, (int64_t) fingerprint);
+}
+
 void clearCustomServer(JNIEnv *env, jclass c, jint instanceNum) {
     ConnectionsManager::getInstance(instanceNum).clearCustomServer();
 }
@@ -566,6 +576,7 @@ static JNINativeMethod ConnectionsManagerMethods[] = {
         {"native_switchBackend", "(IZ)V", (void *) switchBackend},
         {"native_setCustomServer", "(ILjava/lang/String;I)V", (void *) setCustomServer},
         {"native_clearCustomServer", "(I)V", (void *) clearCustomServer},
+        {"native_setServerPublicKey", "(ILjava/lang/String;J)V", (void *) setServerPublicKey},
         {"native_setTransport", "(IIZ)V", (void *) setTransport},
         {"native_pauseNetwork", "(I)V", (void *) pauseNetwork},
         {"native_resumeNetwork", "(IZ)V", (void *) resumeNetwork},

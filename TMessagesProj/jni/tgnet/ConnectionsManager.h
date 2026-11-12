@@ -66,6 +66,16 @@ public:
     void setCustomServer(std::string address, uint32_t port);
     void clearCustomServer();
     void setTransport(int32_t transport, bool obfuscated);
+    void setServerPublicKey(std::string key, int64_t fingerprint) {
+        serverPublicKey = std::move(key);
+        serverPublicKeyFingerprint = fingerprint;
+    }
+    const std::string &getServerPublicKey() const {
+        return serverPublicKey;
+    }
+    int64_t getServerPublicKeyFingerprint() const {
+        return serverPublicKeyFingerprint;
+    }
     int32_t getTransport() const {
         return transportType.load();
     }
@@ -160,6 +170,8 @@ private:
     bool testBackend = false;
     std::string customServerAddress;
     uint32_t customServerPort = 0;
+    std::string serverPublicKey;
+    int64_t serverPublicKeyFingerprint = 0;
     std::atomic<int32_t> transportType{-1};
     std::atomic<bool> transportObfuscated{false};
     bool clientBlocked = true;
