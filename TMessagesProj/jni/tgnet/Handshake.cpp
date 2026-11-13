@@ -27,6 +27,7 @@
 #include "NativeByteBuffer.h"
 #include "Config.h"
 #include "Connection.h"
+#include "Timer.h"
 
 thread_local static std::vector<std::string> serverPublicKeys;
 thread_local static std::vector<uint64_t> serverPublicKeysFingerprints;
@@ -41,14 +42,45 @@ Handshake::Handshake(Datacenter *datacenter, HandshakeType type, HandshakeDelega
     currentDatacenter = datacenter;
     handshakeType = type;
     delegate = handshakeDelegate;
+    restartTimer = new Timer(datacenter->instanceNum, [&] {
+        restartTimer->stop();
+        beginHandshake(true);
+    });
 }
 
 Handshake::~Handshake() {
+    if (restartTimer != nullptr) {
+        restartTimer->stop();
+        delete restartTimer;
+        restartTimer = nullptr;
+    }
     cleanupHandshake();
+}
+
+void Handshake::restartHandshakeDelayed() {
+    if (restartTimer == nullptr) {
+        beginHandshake(true);
+        return;
+    }
+    // Every failed attempt doubles the pause, so a server that keeps rejecting the pinned key gets
+    // one req_pq per 10 s instead of a flood, while a one-off failure still recovers in 2 s.
+    if (LOGS_ENABLED) DEBUG_D("account%u dc%u handshake: restart in %u ms, type = %d", currentDatacenter->instanceNum, currentDatacenter->datacenterId, restartDelayMs, handshakeType);
+    restartTimer->stop();
+    restartTimer->setTimeout(restartDelayMs, false);
+    restartTimer->start();
+    if (restartDelayMs < 10000) {
+        restartDelayMs *= 2;
+        if (restartDelayMs > 10000) {
+            restartDelayMs = 10000;
+        }
+    }
 }
 
 void Handshake::beginHandshake(bool reconnect) {
     if (LOGS_ENABLED) DEBUG_D("account%u dc%u handshake: begin, type = %d", currentDatacenter->instanceNum, currentDatacenter->datacenterId, handshakeType);
+    if (restartTimer != nullptr) {
+        restartTimer->stop();
+    }
     cleanupHandshake();
     Connection *connection = getConnection();
     handshakeState = 1;
@@ -441,9 +473,13 @@ void Handshake::processHandshakeResponse_resPQ(TLObject *message, int64_t messag
                         RSA_free(customRsaKey);
                     }
                 } else {
-                    int64_t fingerprint = ConnectionsManager::getInstance(currentDatacenter->instanceNum).getServerPublicKeyFingerprint();
-                    if (fingerprint == 0) {
-                        fingerprint = computeServerPublicKeyFingerprint(customRsaKey);
+                    // The fingerprint is derived from the key by definition, so always recompute it.
+                    // A stored value can be stale after the key was changed and then the server
+                    // rejects every req_DH_params.
+                    int64_t fingerprint = computeServerPublicKeyFingerprint(customRsaKey);
+                    int64_t storedFingerprint = ConnectionsManager::getInstance(currentDatacenter->instanceNum).getServerPublicKeyFingerprint();
+                    if (storedFingerprint != 0 && storedFingerprint != fingerprint && LOGS_ENABLED) {
+                        DEBUG_W("account%u dc%u handshake: stored public key fingerprint %llx != computed %llx, using the computed one", currentDatacenter->instanceNum, currentDatacenter->datacenterId, (unsigned long long) storedFingerprint, (unsigned long long) fingerprint);
                     }
                     RSA_free(customRsaKey);
                     if (fingerprint != 0) {
@@ -509,7 +545,7 @@ void Handshake::processHandshakeResponse_resPQ(TLObject *message, int64_t messag
                 loadCdnConfig(currentDatacenter);
             } else {
                 if (LOGS_ENABLED) DEBUG_E("account%u dc%u handshake: can't find valid server public key, type = %d", currentDatacenter->instanceNum, currentDatacenter->datacenterId, handshakeType);
-                beginHandshake(false);
+                restartHandshakeDelayed();
             }
             return;
         }
@@ -518,7 +554,7 @@ void Handshake::processHandshakeResponse_resPQ(TLObject *message, int64_t messag
 
         if (result->pq == nullptr || result->pq->length != 8) {
             if (LOGS_ENABLED) DEBUG_E("account%u dc%u handshake: invalid pq length, type = %d", currentDatacenter->instanceNum, currentDatacenter->datacenterId, handshakeType);
-            beginHandshake(false);
+            restartHandshakeDelayed();
             return;
         }
 
@@ -532,7 +568,8 @@ void Handshake::processHandshakeResponse_resPQ(TLObject *message, int64_t messag
                       ((uint64_t) (result->pq->bytes[7] & 0xff));
         uint32_t p, q;
         if (!factorizeValue(pq, p, q)) {
-            beginHandshake(false);
+            if (LOGS_ENABLED) DEBUG_E("account%u dc%u handshake: can't factorize pq, type = %d", currentDatacenter->instanceNum, currentDatacenter->datacenterId, handshakeType);
+            restartHandshakeDelayed();
             return;
         }
 
@@ -599,7 +636,7 @@ void Handshake::processHandshakeResponse_resPQ(TLObject *message, int64_t messag
         if (innerDataSize > 144) {
             if (LOGS_ENABLED) DEBUG_E("account%u dc%u handshake: inner data too large %d, type = %d", currentDatacenter->instanceNum, currentDatacenter->datacenterId, innerDataSize, handshakeType);
             delete innerData;
-            beginHandshake(false);
+            restartHandshakeDelayed();
             return;
         }
         uint32_t keySize = 32;
@@ -620,7 +657,7 @@ void Handshake::processHandshakeResponse_resPQ(TLObject *message, int64_t messag
                 RSA_free(rsaKey);
             }
             innerDataBuffer->reuse();
-            beginHandshake(false);
+            restartHandshakeDelayed();
             return;
         }
 
@@ -692,6 +729,8 @@ void Handshake::processHandshakeResponse_resPQ(TLObject *message, int64_t messag
 
         request->encrypted_data = std::unique_ptr<ByteArray>(rsaEncryptedData);
 
+        // The key was accepted, so a later failure is not a key mismatch; start the backoff over.
+        restartDelayMs = 2000;
         sendAckRequest(messageId);
         sendRequestData(request, true);
     } else {

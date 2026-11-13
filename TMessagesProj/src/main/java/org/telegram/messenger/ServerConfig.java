@@ -112,7 +112,8 @@ public final class ServerConfig {
     }
 
     public static void applyPublicKey(ConnectionsManager connectionsManager, int account) {
-        connectionsManager.setServerPublicKey(getPublicKey(account), getPublicKeyFingerprint(account));
+        // The fingerprint is always recomputed natively from the key, so no stored value is passed.
+        connectionsManager.setServerPublicKey(getPublicKey(account), 0);
     }
 
     /** True when the account already points at this exact custom backend. */
@@ -144,6 +145,9 @@ public final class ServerConfig {
     public static String getPublicKeyName(int account) {
         String key = getPublicKey(account);
         if (TextUtils.isEmpty(key)) {
+            if (getMode(account) == MODE_CUSTOM) {
+                return LocaleController.getString(R.string.PublicKeyMissing);
+            }
             return LocaleController.getString(R.string.PublicKeyDefault);
         }
         return LocaleController.getString(R.string.PublicKeyCustom);
@@ -246,8 +250,9 @@ public final class ServerConfig {
             String host = getHost(account);
             int port = getPort(account);
             if (!TextUtils.isEmpty(host) && port > 0 && port <= 65535) {
+                String publicKey = resolvePublicKey(account, host, port);
                 connectionsManager.setCustomServer(host, port);
-                applyPublicKey(connectionsManager, account);
+                connectionsManager.setServerPublicKey(publicKey, 0);
             } else {
                 if (connectionsManager.hasCustomServer()) {
                     connectionsManager.clearCustomServer();
@@ -262,6 +267,40 @@ public final class ServerConfig {
         }
     }
 
+    /** The RSA key of a ready-made backend, or an empty string for a host picked by the user. */
+    public static String getPresetKey(String host, int port) {
+        if (PRESET_TONPX_HOST.equals(host) && port == PRESET_TONPX_PORT) {
+            return PRESET_TONPX_KEY;
+        }
+        if (PRESET_LOCAL_HOST.equals(host) && port == PRESET_LOCAL_PORT) {
+            return PRESET_LOCAL_KEY;
+        }
+        return "";
+    }
+
+    /**
+     * Returns the key to pin for the given address. Accounts saved before the presets pinned their
+     * key, and accounts whose key was wiped, get the preset key back instead of staying in a state
+     * where every handshake fails.
+     */
+    private static String resolvePublicKey(int account, String host, int port) {
+        String publicKey = getPublicKey(account);
+        if (!TextUtils.isEmpty(publicKey)) {
+            return publicKey;
+        }
+        String presetKey = getPresetKey(host, port);
+        if (!TextUtils.isEmpty(presetKey)) {
+            SharedPreferences preferences = prefs();
+            if (preferences != null) {
+                preferences.edit()
+                        .putString("publicKey" + account, presetKey)
+                        .putLong("publicKeyFingerprint" + account, 0)
+                        .apply();
+            }
+        }
+        return presetKey;
+    }
+
     /** Re-applies the custom address, e.g. after the server pushed a new config with official DC IPs. */
     public static void applyCustom(int account) {
         applyCustom(ConnectionsManager.getInstance(account), account);
@@ -274,6 +313,6 @@ public final class ServerConfig {
             return;
         }
         connectionsManager.setCustomServer(host, port);
-        applyPublicKey(connectionsManager, account);
+        connectionsManager.setServerPublicKey(resolvePublicKey(account, host, port), 0);
     }
 }

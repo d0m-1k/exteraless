@@ -75,6 +75,10 @@ public final class ServerSettingsDialog {
             BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.ServerAlready)).show();
             return;
         }
+        if (!ConnectionsManager.isValidServerKey(account, publicKey)) {
+            BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.PublicKeyInvalid)).show();
+            return;
+        }
         ServerConfig.setCustom(account, host, port);
         ServerConfig.setPublicKey(account, publicKey, fingerprint);
         ServerConfig.setMode(account, ServerConfig.MODE_CUSTOM);

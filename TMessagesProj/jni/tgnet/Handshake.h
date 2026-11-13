@@ -19,6 +19,7 @@ class ByteArray;
 class TLObject;
 class TL_future_salt;
 class Connection;
+class Timer;
 
 class Handshake {
 
@@ -62,9 +63,17 @@ private:
     int32_t authKeyPendingRequestId = 0;
     int64_t authKeyPendingMessageId = 0;
     bool needResendData = false;
+    Timer *restartTimer = nullptr;
+    uint32_t restartDelayMs = 2000;
 
     void sendRequestData(TLObject *object, bool important);
     void sendAckRequest(int64_t messageId);
+    /**
+     * Restarts the handshake after a delay instead of immediately. Every resPQ that cannot be
+     * matched with a key used to trigger a new req_pq, which turns into a request storm when the
+     * server is on a low-latency network or does not know the pinned custom key at all.
+     */
+    void restartHandshakeDelayed();
 
     static void saveCdnConfig(Datacenter *datacenter);
     static void saveCdnConfigInternal(NativeByteBuffer *buffer);

@@ -25,6 +25,7 @@
     <string name="PublicKeyRow">Публичный ключ: %1$s</string>
     <string name="PublicKeyDefault">По умолчанию (Telegram)</string>
     <string name="PublicKeyCustom">Свой ключ</string>
+    <string name="PublicKeyMissing">Не задан</string>
     <string name="PublicKeyPaste">Вставить ключ PEM…</string>
     <string name="PublicKeyHint">Вставьте публичный ключ сервера в формате PEM</string>
     <string name="PublicKeyInvalid">Некорректный публичный ключ</string>

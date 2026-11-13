@@ -11709,6 +11709,7 @@
     <string name="PublicKeyRow">Public key: %1$s</string>
     <string name="PublicKeyDefault">Default (Telegram)</string>
     <string name="PublicKeyCustom">Custom key</string>
+    <string name="PublicKeyMissing">Not set</string>
     <string name="PublicKeyPaste">Paste PEM key…</string>
     <string name="PublicKeyHint">Paste the PEM public key of the server</string>
     <string name="PublicKeyInvalid">Invalid public key</string>
