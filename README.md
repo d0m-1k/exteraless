@@ -24,7 +24,7 @@ exteraGram реализованы с открытым исходным кодо�
 Проект **в бете**: часть возможностей exteraGram ещё не перенесена. Если заметили, что
 каких-то функций не хватает, — откройте issue или напишите в [канал](https://t.me/exteraless?direct).
 
-* Имя пакета: `com.exteraless.app`
+* Имя пакета: `nnn.gram`
 * Только 64-битные устройства (`arm64-v8a`, `x86_64`)
 
 ### Что внутри
@@ -100,7 +100,7 @@ exteraGram реализованы с открытым исходным кодо�
    отладочным ключом Android.
 
 4. Для push-уведомлений заменить `TMessagesProj/google-services.json` своим
-   (Firebase, имя пакета `com.exteraless.app`).
+   (Firebase, имя пакета `nnn.gram`).
 
 5. Необязательно: свои ключи в `local.properties` — `MAPS_API_KEY` (Google Maps; ключ
    привязан к пакету и подписи, поэтому чужой показывает пустую карту) и `GLYPH_API_KEY`
@@ -167,7 +167,7 @@ see that on the install sheet, and it gets only what you allow.
 The project is **in beta**: some exteraGram features have not been ported yet. If you
 notice a missing feature, open an issue or write to the [channel](https://t.me/exteraless?direct).
 
-* Package name: `com.exteraless.app`
+* Package name: `nnn.gram`
 * 64-bit devices only (`arm64-v8a`, `x86_64`)
 
 ### What's inside
@@ -202,7 +202,7 @@ You need JDK 21, the Android SDK with NDK and CMake, and Python 3.11 on the buil
    shipped with the repository; without one the build is signed with the Android debug key.
 
 4. For push notifications, replace `TMessagesProj/google-services.json` with your own
-   Firebase config for `com.exteraless.app`.
+   Firebase config for `nnn.gram`.
 
 5. Optional: `MAPS_API_KEY` and `GLYPH_API_KEY` in `local.properties`, and your metadata
    channel id (without `-100`) in `BaseRemoteHelper.CHANNEL_METADATA_ID`.
