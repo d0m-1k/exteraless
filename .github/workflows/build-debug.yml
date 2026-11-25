@@ -1,0 +1,117 @@
+name: Debug APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'stage1-baseline'
+      - 'stage2-*'
+      - 'stage3-*'
+    paths-ignore:
+      - '**.md'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Gradle Debug Build
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_HARDLINK: "true"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_MAXSIZE: "2G"
+      NATIVE_TARGET: "arm64-v8a"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Python for Chaquopy
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Point Chaquopy at that Python
+        run: echo "CHAQUOPY_BUILD_PYTHON=$(which python3.11 || which python)" >> $GITHUB_ENV
+
+      - name: Set up Ccache
+        uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          key: android-ndk
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Set up Android SDK Tools
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "build-tools;36.0.0 ndk;27.2.12479018 platforms;android-37.0 cmake;3.22.1"
+
+      - name: Install Native Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes nasm
+
+      - name: Configure local.properties
+        env:
+          LOCAL_PROPERTIES: ${{ secrets.LOCAL_PROPERTIES }}
+        run: |
+          rm -f local.properties
+          if [ -n "$LOCAL_PROPERTIES" ]; then
+            echo "$LOCAL_PROPERTIES" | base64 -d > local.properties
+          fi
+          if ! grep -q '^sdk.dir=' local.properties 2>/dev/null; then
+            echo "sdk.dir=${ANDROID_HOME}" >> local.properties
+          fi
+          # never print secrets, only which keys are present
+          cut -d= -f1 local.properties | sort -u
+
+      - name: Modify Gradle JVM Args
+        run: |
+          MEMORY_KB=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+          MEMORY_GB=$((MEMORY_KB / 1024 / 1024))
+          echo "Detected memory size: ${MEMORY_GB}GB"
+          if [ $MEMORY_GB -ge 12 ]; then
+            sed -i '/^org\.gradle\.jvmargs=/d' gradle.properties
+            echo "org.gradle.jvmargs=-Xmx8G -XX:MaxMetaspaceSize=2G -XX:+UseParallelGC -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8" >> gradle.properties
+          fi
+          cat gradle.properties
+
+      - name: Debug Build
+        env:
+          DEBUG_BUILD: "true"
+          LOCAL_PROPERTIES: ${{ secrets.LOCAL_PROPERTIES }}
+        run: |
+          ./gradlew TMessagesProj:assembleDebug --stacktrace
+
+      - name: Collect APK
+        run: |
+          APK=$(find TMessagesProj/build/outputs/apk/debug -name '*.apk' | head -1)
+          if [ -z "$APK" ]; then
+            echo "APK not found"
+            exit 1
+          fi
+          mkdir -p artifacts
+          cp "$APK" "artifacts/exteraless-debug-${{ github.run_number }}.apk"
+          ls -lh artifacts
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: exteraless-debug-${{ github.run_number }}
+          path: artifacts/*.apk
+          if-no-files-found: error
